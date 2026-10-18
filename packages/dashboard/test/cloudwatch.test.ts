@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  ACCOUNT_ALIASES_KEY,
   bandFromGauge,
   CloudWatchError,
   createCloudWatchSource,
@@ -630,6 +631,50 @@ describe('account aliases', () => {
       'AVG',
     )
     expect(folded).toEqual([{ key: 'alpha', points: [[t0, 7]] }])
+  })
+
+  it('asks an aliases function on every split by person, and shows the series unfolded if it fails', async () => {
+    let current: ReadonlyMap<string, string> = new Map([['acct-0000aaaa', 'alpha']])
+    let fail = false
+    const asked = vi.fn(async () => {
+      if (fail) throw new Error('KV unavailable')
+      return current
+    })
+    const fake = fakeCloudWatch(byPerson)
+    const src = createCloudWatchSource({
+      accessKeyId: 'AKIAEXAMPLE',
+      secretAccessKey: 'example-secret',
+      region: 'us-test-1',
+      fetch: fake.fetchImpl,
+      now: () => NOW,
+      accountAliases: asked,
+    })
+    expect((await src.series(query)).map((s) => s.key)).toEqual(['alpha', 'acct-0000cccc'])
+    current = new Map([['acct-0000cccc', 'charlie']])
+    expect((await src.series(query)).map((s) => s.key)).toEqual([
+      'acct-0000aaaa',
+      'alpha',
+      'charlie',
+    ])
+    fail = true
+    expect((await src.series(query)).map((s) => s.key)).toEqual([
+      'acct-0000aaaa',
+      'alpha',
+      'acct-0000cccc',
+    ])
+    // Not asked for a split that is not by person.
+    const calls = asked.mock.calls.length
+    await src.series({ ...query, groupBy: 'profile' })
+    expect(asked.mock.calls.length).toBe(calls)
+  })
+
+  it('names where malformed lines came from', () => {
+    const warn = vi.fn()
+    parseAccountAliases('nope', warn, 'DASHBOARD_CONFIG/account-aliases')
+    expect(warn).toHaveBeenCalledWith(
+      'claw-master dashboard: 1 malformed line in DASHBOARD_CONFIG/account-aliases ignored',
+    )
+    expect(ACCOUNT_ALIASES_KEY).toBe('account-aliases')
   })
 
   it('is read from DASHBOARD_ACCOUNT_ALIASES by selectSource', async () => {

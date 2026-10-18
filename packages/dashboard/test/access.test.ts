@@ -8,6 +8,7 @@ import {
   accessTeamDomain,
   cloudflareAccess,
   readAllowlist,
+  readConfigValue,
 } from '../src/access'
 
 const TEAM = 'https://example.cloudflareaccess.com'
@@ -191,6 +192,19 @@ describe('readAllowlist', () => {
     }
     expect(await readAllowlist(failing)).toEqual({
       missing: 'DASHBOARD_CONFIG/allowed-emails (read failed)',
+    })
+  })
+})
+
+describe('readConfigValue', () => {
+  it('reads any key of the namespace with the same reasons', async () => {
+    const store = { get: async (key: string) => (key === 'account-aliases' ? 'x' : null) }
+    expect(await readConfigValue(store, 'account-aliases')).toEqual({ text: 'x' })
+    expect(await readConfigValue(store, 'other')).toEqual({
+      missing: 'DASHBOARD_CONFIG/other (no such key)',
+    })
+    expect(await readConfigValue(undefined, 'account-aliases')).toEqual({
+      missing: 'DASHBOARD_CONFIG (no KV binding)',
     })
   })
 })

@@ -43,8 +43,10 @@ export interface CloudWatchSourceOptions {
   /**
    * Account codes to people's names (`acct-<hash>` -> name). Points exported before the server
    * labelled accounts carry the code; a person's series under both is shown once, under the name.
+   * A function is asked on every split by person, so aliases can change without a restart; if it
+   * fails, the series are shown unfolded.
    */
-  accountAliases?: ReadonlyMap<string, string>
+  accountAliases?: ReadonlyMap<string, string> | (() => Promise<ReadonlyMap<string, string>>)
 }
 
 /** CloudWatch refused or failed a request; `code` is its error type, the message its text. */
@@ -77,13 +79,18 @@ export class CloudWatchError extends Error {
 
 const ALIAS_LINE = /^(acct-[0-9a-f]+)\s*=\s*(\S(?:.*\S)?)$/
 
+/** The DASHBOARD_CONFIG KV key the account aliases are read from (the allowlist's namespace). */
+export const ACCOUNT_ALIASES_KEY = 'account-aliases'
+
 /**
- * Reads DASHBOARD_ACCOUNT_ALIASES: one `acct-<hash>=NAME` line per person. Blank lines and `#`
- * comments are skipped; a malformed line is ignored, and how many were is logged, never which.
+ * Reads account aliases: one `acct-<hash>=NAME` line per person. Blank lines and `#` comments are
+ * skipped; a malformed line is ignored, and how many were is logged, never which. `from` names
+ * where the text came from in that message.
  */
 export function parseAccountAliases(
   text: string | undefined,
   warn: (message: string) => void = console.warn,
+  from = 'DASHBOARD_ACCOUNT_ALIASES',
 ): Map<string, string> {
   const aliases = new Map<string, string>()
   if (text === undefined) return aliases
@@ -100,7 +107,7 @@ export function parseAccountAliases(
   }
   if (malformed > 0) {
     warn(
-      `claw-master dashboard: ${malformed} malformed line${malformed === 1 ? '' : 's'} in DASHBOARD_ACCOUNT_ALIASES ignored`,
+      `claw-master dashboard: ${malformed} malformed line${malformed === 1 ? '' : 's'} in ${from} ignored`,
     )
   }
   return aliases
@@ -530,9 +537,14 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         key: query.groupBy === undefined ? 'total' : result.label,
         points: result.points,
       }))
-      return query.groupBy === 'client_account'
-        ? foldAliases(series, aliases, resolved.statistic)
-        : series
+      if (query.groupBy !== 'client_account') return series
+      let map: ReadonlyMap<string, string>
+      try {
+        map = typeof aliases === 'function' ? await aliases() : aliases
+      } catch {
+        map = new Map<string, string>()
+      }
+      return foldAliases(series, map, resolved.statistic)
     },
   }
 }
@@ -548,7 +560,8 @@ export interface SourceSelection {
  * CloudWatch when AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION are all set, otherwise
  * the given demo source (and a warning naming what is missing, so an empty deployment is not
  * mistaken for a configured one). A CloudWatch failure later is an error, never a fallback.
- * DASHBOARD_ACCOUNT_ALIASES, when set, folds account codes into people's names.
+ * DASHBOARD_ACCOUNT_ALIASES, when set, folds account codes into people's names, unless the caller
+ * passes its own accountAliases (the reference app reads them from KV).
  */
 export function selectSource(
   env: Record<string, string | undefined>,
