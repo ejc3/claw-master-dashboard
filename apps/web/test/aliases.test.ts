@@ -1,10 +1,9 @@
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
-// The account aliases come from the DASHBOARD_CONFIG namespace, key account-aliases. The
-// DASHBOARD_ACCOUNT_ALIASES secret is read only on a definite "no such key"; once the key exists,
-// the KV value is the only source and an empty one means no aliases. A failed read keeps the
-// aliases last read (none before the first) and never falls back. A change is picked up after the
-// app's cache runs out, and nothing logged names a person or a code.
+// The account aliases come from the DASHBOARD_CONFIG namespace, key account-aliases, and nowhere
+// else: no binding, no key or an empty value means no aliases. A failed read keeps the aliases last
+// read (none before the first). A change is picked up after the app's cache runs out, and nothing
+// logged names a person or a code.
 
 const kv: { bound: boolean; failing: boolean; values: Record<string, string> } = {
   bound: false,
@@ -30,11 +29,10 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 
 afterAll(() => {
   vi.useRealTimers()
-  delete process.env.DASHBOARD_ACCOUNT_ALIASES
 })
 
 describe('the account aliases from KV', () => {
-  it('reads KV, falls back to the old secret only while the key is missing, and rereads after a minute', async () => {
+  it('reads only the KV key, keeps the last aliases through a failed read, and rereads after a minute', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date())
     const warns = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -44,19 +42,21 @@ describe('the account aliases from KV', () => {
     const entries = async () => [...(await accountAliases())]
 
     try {
-      // Nothing anywhere: no aliases, and the log says why.
+      // No binding: no aliases, and the log says why.
       expect(await entries()).toEqual([])
       expect(logged().at(-1)).toBe(
         'claw-master dashboard: account aliases: not set: DASHBOARD_CONFIG (no KV binding); no aliases',
       )
 
-      // Without the binding the old secret is not read either: only a missing key falls back.
-      process.env.DASHBOARD_ACCOUNT_ALIASES = 'acct-0000aaaa=alpha'
+      // No key: no aliases.
+      kv.bound = true
       later()
       expect(await entries()).toEqual([])
+      expect(logged().at(-1)).toBe(
+        'claw-master dashboard: account aliases: not set: DASHBOARD_CONFIG/account-aliases (no such key); no aliases',
+      )
 
-      // A failed read is not a missing key: no fallback, nothing read yet, and the error logged.
-      kv.bound = true
+      // A failed read before any good one: none, and the error logged.
       kv.failing = true
       later()
       expect(await entries()).toEqual([])
@@ -64,15 +64,8 @@ describe('the account aliases from KV', () => {
         'claw-master dashboard: account aliases: DASHBOARD_CONFIG/account-aliases (read failed): KV unavailable; no aliases',
       )
 
-      // The old secret, while KV definitely has no key.
+      // The key.
       kv.failing = false
-      later()
-      expect(await entries()).toEqual([['acct-0000aaaa', 'alpha']])
-      expect(logged().at(-1)).toBe(
-        'claw-master dashboard: account aliases: not set: DASHBOARD_CONFIG/account-aliases (no such key); using DASHBOARD_ACCOUNT_ALIASES until it is',
-      )
-
-      // The key exists: it wins, and the old secret is ignored.
       kv.values['account-aliases'] =
         '# written by Terraform\nacct-0000bbbb=bravo\nacct-0000cccc=charlie'
       later()
@@ -102,7 +95,7 @@ describe('the account aliases from KV', () => {
       later()
       expect(await entries()).toEqual([['acct-0000bbbb', 'bravo']])
 
-      // An empty value (only the header) means no aliases, not the old secret.
+      // An empty value (only the header) means no aliases.
       kv.values['account-aliases'] = '# written by Terraform'
       later()
       expect(await entries()).toEqual([])
@@ -119,7 +112,7 @@ describe('the account aliases from KV', () => {
       )
 
       const all = logged().join('\n')
-      for (const secret of ['alpha', 'bravo', 'charlie', 'delta', 'acct-0000']) {
+      for (const secret of ['bravo', 'charlie', 'delta', 'acct-0000']) {
         expect(all).not.toContain(secret)
       }
     } finally {

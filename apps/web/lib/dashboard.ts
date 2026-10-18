@@ -146,16 +146,14 @@ export async function authorizePage(): Promise<boolean> {
 const ALIASES_TTL_MS = 60_000
 
 let aliases: { readAt: number; key: string; map: ReadonlyMap<string, string> } | undefined
-/** The cache key while reads fail: never equal to a real one, which always holds a newline. */
+/** The cache key while reads fail: never equal to a real one (`missing:...` or `text:...`). */
 const READ_FAILED = 'read failed'
 
 // The account aliases come from the DASHBOARD_CONFIG namespace, key account-aliases, which ejc3/aws
 // writes from the names claw-master itself uses; read on use and again after ALIASES_TTL_MS, like
-// the allowlist. Only a definite "no such key" falls back to the DASHBOARD_ACCOUNT_ALIASES Worker
-// secret (the move from that secret); once the key exists it is the only source, and an empty one
-// means no aliases. A failed read keeps the aliases last read (none before the first) and logs the
-// error. Each change of source or reason is logged once, never a name or a code. Exported for its
-// test.
+// the allowlist. No binding, no key or an empty value means no aliases. A failed read keeps the
+// aliases last read (none before the first) and logs the error. Each change of reason is logged
+// once, never a name or a code. Exported for its test.
 export async function accountAliases(): Promise<ReadonlyMap<string, string>> {
   const now = Date.now()
   if (aliases !== undefined && now - aliases.readAt < ALIASES_TTL_MS) return aliases.map
@@ -170,27 +168,18 @@ export async function accountAliases(): Promise<ReadonlyMap<string, string>> {
     aliases = { readAt: now, key: READ_FAILED, map: kept }
     return kept
   }
-  const fallback = process.env.DASHBOARD_ACCOUNT_ALIASES ?? ''
-  const from =
-    'text' in value
-      ? `DASHBOARD_CONFIG/${ACCOUNT_ALIASES_KEY}`
-      : value.cause === 'key' && fallback.trim() !== ''
-        ? 'DASHBOARD_ACCOUNT_ALIASES'
-        : null
-  const text = 'text' in value ? value.text : from === null ? '' : fallback
-  const key = `${from ?? ''}\n${text}`
+  const from = `DASHBOARD_CONFIG/${ACCOUNT_ALIASES_KEY}`
+  const key = 'text' in value ? `text:${value.text}` : `missing:${value.missing}`
   if (aliases !== undefined && aliases.key === key) {
     aliases.readAt = now
     return aliases.map
   }
   const map =
-    from === null ? new Map<string, string>() : parseAccountAliases(text, console.warn, from)
+    'text' in value
+      ? parseAccountAliases(value.text, console.warn, from)
+      : new Map<string, string>()
   if ('missing' in value) {
-    console.warn(
-      from === null
-        ? `claw-master dashboard: account aliases: not set: ${value.missing}; no aliases`
-        : `claw-master dashboard: account aliases: not set: ${value.missing}; using DASHBOARD_ACCOUNT_ALIASES until it is`,
-    )
+    console.warn(`claw-master dashboard: account aliases: not set: ${value.missing}; no aliases`)
   } else if (map.size === 0) {
     console.warn(`claw-master dashboard: account aliases: ${from} is empty; no aliases`)
   }

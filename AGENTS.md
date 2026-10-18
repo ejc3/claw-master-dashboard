@@ -57,7 +57,6 @@ and this one needs no Vercel project.
   app checks. Never set an allowlist on the Worker by hand or bring back a Worker secret for it.
 - **The account aliases come from claw-master's own names.** Terraform derives them from
   `claude-master/account-labels` and writes them to the same namespace, key `account-aliases`.
-  Never set `DASHBOARD_ACCOUNT_ALIASES` on the Worker by hand: the app reads it only while that
-  key is missing, for the move.
+  Never set aliases on the Worker by hand or bring back a Worker secret for them.
 - **Public build-time values** (`NEXT_PUBLIC_*`) are Actions variables mapped into the build
   step of `.github/workflows/deploy.yml` (only the names mapped there reach the build).

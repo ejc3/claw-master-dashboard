@@ -43,7 +43,6 @@ Set from `apps/web` with `wrangler secret put <NAME>`, reading the value from st
 | `CF_ACCESS_TEAM_DOMAIN` | The Access team domain, `https://<team>.cloudflareaccess.com` (Terraform output) |
 | `CF_ACCESS_AUD` | The Access application's audience tag (Terraform output) |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | The read-only key, from its Secrets Manager secret. With all three set the page reads CloudWatch; otherwise it shows the demo fixture and says "Demo data" in its heading |
-| `DASHBOARD_ACCOUNT_ALIASES` | Being retired (see "The account aliases" below): read only while the KV key `account-aliases` is missing |
 | `DASHBOARD_SERVICE_TOKEN_CLIENT_ID` | Optional. Admits that service token. Access issues one only if the application has a service-auth policy for it, and none is configured |
 
 Without `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD`, or with an invalid one, the app admits nobody and logs which.
@@ -52,24 +51,11 @@ Without `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD`, or with an invalid one, the 
 
 The app checks the address in the Access assertion against the list in KV (`DASHBOARD_CONFIG`, key `allowed-emails`; addresses separated by commas or spaces), so a policy widened by mistake in Access admits no one new. With no binding, no key or an empty list it admits nobody and logs which (`not set: DASHBOARD_CONFIG/allowed-emails (no such key); admitting nobody`, never an address). It reads the list again a minute after the last reading, so a person removed in `ejc3/aws` is refused within about two minutes (KV's cache plus the app's) even while their 24-hour Access session lasts.
 
-It replaced the `DASHBOARD_ALLOWED_EMAILS` Worker secret, which the app no longer reads. The move, in this order so that nobody is locked out:
-
-1. `ejc3/aws` applies the namespace and the key (the list already in it).
-2. Set `DASHBOARD_CONFIG_KV_ID` in the `production` environment.
-3. Merge the change that reads KV; its deploy binds the namespace. Check that an operator still gets 200 from `/api/claw-master/snapshot`.
-4. Only then delete the old secret: `wrangler secret delete DASHBOARD_ALLOWED_EMAILS` from `apps/web`.
-
-Until step 3 the running Worker reads the old secret, which is still there; from step 3 on it reads KV, which already holds the list. A deploy without the variable fails before uploading, so the running version keeps serving.
+The binding needs the namespace's id in the `production` environment's `DASHBOARD_CONFIG_KV_ID` variable; a deploy without it fails before uploading, so the running version keeps serving.
 
 ## The account aliases
 
-Series reported under an account code (`acct-<hash>`) before the server named that account are shown under the person's name, so each person has one row. The aliases are read from KV (`DASHBOARD_CONFIG`, key `account-aliases`): one `acct-<hash>=NAME` line per person, `#` lines skipped, malformed lines ignored and counted in the log. Like the allowlist, they are read again a minute after the last reading. An empty value means no aliases. Only a definite "no such key" falls back to the `DASHBOARD_ACCOUNT_ALIASES` Worker secret, for the move away from it; without the binding there are no aliases. A failed read keeps the aliases last read (none before the first) and logs the error, never falling back. Each case is logged once, never a name or a code.
-
-The move, in this order:
-
-1. `ejc3/aws` applies the key (the aliases already in it).
-2. Merge the change that reads it; from its deploy on, the key is the only source (the secret is ignored while the key exists).
-3. Check that the people breakdown still shows one row per person, then delete the old secret: `wrangler secret delete DASHBOARD_ACCOUNT_ALIASES` from `apps/web`. A later change removes the fallback.
+Series reported under an account code (`acct-<hash>`) before the server named that account are shown under the person's name, so each person has one row. The aliases are read from KV (`DASHBOARD_CONFIG`, key `account-aliases`): one `acct-<hash>=NAME` line per person, `#` lines skipped, malformed lines ignored and counted in the log. Like the allowlist, they are read again a minute after the last reading. No binding, no key or an empty value means no aliases, and the log says which. A failed read keeps the aliases last read (none before the first) and logs the error. Each case is logged once, never a name or a code. To name an account, change `claude-master/account-labels` in `ejc3/aws` and apply.
 
 Never put secrets in `apps/web/.env*`. OpenNext embeds those files in the Worker it builds. The Deploy workflow fails if a build embeds any.
 

@@ -90,7 +90,7 @@ export const ACCOUNT_ALIASES_KEY = 'account-aliases'
 export function parseAccountAliases(
   text: string | undefined,
   warn: (message: string) => void = console.warn,
-  from = 'DASHBOARD_ACCOUNT_ALIASES',
+  from = 'the account aliases',
 ): Map<string, string> {
   const aliases = new Map<string, string>()
   if (text === undefined) return aliases
@@ -560,8 +560,8 @@ export interface SourceSelection {
  * CloudWatch when AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION are all set, otherwise
  * the given demo source (and a warning naming what is missing, so an empty deployment is not
  * mistaken for a configured one). A CloudWatch failure later is an error, never a fallback.
- * DASHBOARD_ACCOUNT_ALIASES, when set, folds account codes into people's names, unless the caller
- * passes its own accountAliases (the reference app reads them from KV).
+ * accountAliases, when the caller passes them, fold account codes into people's names (the
+ * reference app reads them from KV).
  */
 export function selectSource(
   env: Record<string, string | undefined>,
@@ -578,7 +578,6 @@ export function selectSource(
     return {
       kind: 'cloudwatch',
       source: createCloudWatchSource({
-        accountAliases: parseAccountAliases(env.DASHBOARD_ACCOUNT_ALIASES, warn),
         ...rest,
         accessKeyId,
         secretAccessKey,

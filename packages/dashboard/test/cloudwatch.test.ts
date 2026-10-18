@@ -570,9 +570,7 @@ describe('account aliases', () => {
     ])
     expect(warn).toHaveBeenCalledTimes(1)
     const message = warn.mock.calls[0]?.[0] as string
-    expect(message).toBe(
-      'claw-master dashboard: 3 malformed lines in DASHBOARD_ACCOUNT_ALIASES ignored',
-    )
+    expect(message).toBe('claw-master dashboard: 3 malformed lines in the account aliases ignored')
     expect(message).not.toContain('not-a-code')
     expect(parseAccountAliases(undefined, warn).size).toBe(0)
     expect(warn).toHaveBeenCalledTimes(1)
@@ -677,18 +675,33 @@ describe('account aliases', () => {
     expect(ACCOUNT_ALIASES_KEY).toBe('account-aliases')
   })
 
-  it('is read from DASHBOARD_ACCOUNT_ALIASES by selectSource', async () => {
+  it('takes the aliases from the caller in selectSource, never from an environment setting', async () => {
     const fake = fakeCloudWatch(byPerson)
-    const chosen = selectSource(
-      {
-        AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
-        AWS_SECRET_ACCESS_KEY: 'x',
-        AWS_REGION: 'us-test-1',
-        DASHBOARD_ACCOUNT_ALIASES: 'acct-0000aaaa=alpha\nacct-0000cccc=charlie',
-      },
-      createDemoSource({ now: () => NOW }),
-      { warn: vi.fn(), fetch: fake.fetchImpl, now: () => NOW },
-    )
+    const env = {
+      AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+      AWS_SECRET_ACCESS_KEY: 'x',
+      AWS_REGION: 'us-test-1',
+    }
+    const chosen = selectSource(env, createDemoSource({ now: () => NOW }), {
+      warn: vi.fn(),
+      fetch: fake.fetchImpl,
+      now: () => NOW,
+      accountAliases: async () =>
+        new Map([
+          ['acct-0000aaaa', 'alpha'],
+          ['acct-0000cccc', 'charlie'],
+        ]),
+    })
     expect((await chosen.source.series(query)).map((s) => s.key)).toEqual(['alpha', 'charlie'])
+    const plain = selectSource(env, createDemoSource({ now: () => NOW }), {
+      warn: vi.fn(),
+      fetch: fakeCloudWatch(byPerson).fetchImpl,
+      now: () => NOW,
+    })
+    expect((await plain.source.series(query)).map((s) => s.key)).toEqual([
+      'acct-0000aaaa',
+      'alpha',
+      'acct-0000cccc',
+    ])
   })
 })
