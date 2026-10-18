@@ -13,6 +13,7 @@ before the rename, once ejc3/aws has turned that Worker's URL off and removed it
 **`ejc3/aws` (Terraform, `claw-master-dashboard-site.tf`):**
 - **The Access application.** It has the Worker as its destination, so once the URLs are on it gates workers.dev and every preview URL. It signs people in with the account's existing Google and one-time-PIN providers (no new OAuth client), and its policy admits the dashboard's operators.
 - **The app's allowlist.** A Workers KV namespace, bound here as `DASHBOARD_CONFIG`, whose key `allowed-emails` Terraform writes (comma-separated) from the same list as the Access policy. That list is the only one: to add or remove a person, change it in `ejc3/aws` and apply. Nothing about who is admitted is set on the Worker by hand.
+- **The account aliases.** The key `account-aliases` in the same namespace, one `acct-<hash>=NAME` line per person, derived by Terraform from the names claw-master itself uses (`claude-master/account-labels`), with claw-master's own code for each account. Naming an account is one change in `ejc3/aws`.
 - **The read-only AWS key.** It is limited to `cloudwatch:GetMetricData` and `cloudwatch:ListMetrics` in one region, and kept in Secrets Manager.
 
 **`ejc3/aws` (Terraform, `workers-deploy.tf`):** the account's Workers deploy token, shared by the site repositories.
@@ -42,7 +43,7 @@ Set from `apps/web` with `wrangler secret put <NAME>`, reading the value from st
 | `CF_ACCESS_TEAM_DOMAIN` | The Access team domain, `https://<team>.cloudflareaccess.com` (Terraform output) |
 | `CF_ACCESS_AUD` | The Access application's audience tag (Terraform output) |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | The read-only key, from its Secrets Manager secret. With all three set the page reads CloudWatch; otherwise it shows the demo fixture and says "Demo data" in its heading |
-| `DASHBOARD_ACCOUNT_ALIASES` | Optional. One `acct-<hash>=NAME` line per person: series reported under an account code before the server labelled accounts are shown under the name, so each person has one row. `claude-master account-key UUID` prints a code. Malformed lines are ignored (the log says how many) |
+| `DASHBOARD_ACCOUNT_ALIASES` | Being retired (see "The account aliases" below): read only while the KV key `account-aliases` is missing |
 | `DASHBOARD_SERVICE_TOKEN_CLIENT_ID` | Optional. Admits that service token. Access issues one only if the application has a service-auth policy for it, and none is configured |
 
 Without `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD`, or with an invalid one, the app admits nobody and logs which.
@@ -59,6 +60,16 @@ It replaced the `DASHBOARD_ALLOWED_EMAILS` Worker secret, which the app no longe
 4. Only then delete the old secret: `wrangler secret delete DASHBOARD_ALLOWED_EMAILS` from `apps/web`.
 
 Until step 3 the running Worker reads the old secret, which is still there; from step 3 on it reads KV, which already holds the list. A deploy without the variable fails before uploading, so the running version keeps serving.
+
+## The account aliases
+
+Series reported under an account code (`acct-<hash>`) before the server named that account are shown under the person's name, so each person has one row. The aliases are read from KV (`DASHBOARD_CONFIG`, key `account-aliases`): one `acct-<hash>=NAME` line per person, `#` lines skipped, malformed lines ignored and counted in the log. Like the allowlist, they are read again a minute after the last reading. An empty value means no aliases. Only a definite "no such key" falls back to the `DASHBOARD_ACCOUNT_ALIASES` Worker secret, for the move away from it; without the binding there are no aliases. A failed read keeps the aliases last read (none before the first) and logs the error, never falling back. Each case is logged once, never a name or a code.
+
+The move, in this order:
+
+1. `ejc3/aws` applies the key (the aliases already in it).
+2. Merge the change that reads it; from its deploy on, the key is the only source (the secret is ignored while the key exists).
+3. Check that the people breakdown still shows one row per person, then delete the old secret: `wrangler secret delete DASHBOARD_ACCOUNT_ALIASES` from `apps/web`. A later change removes the fallback.
 
 Never put secrets in `apps/web/.env*`. OpenNext embeds those files in the Worker it builds. The Deploy workflow fails if a build embeds any.
 

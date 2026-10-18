@@ -49,11 +49,15 @@ and this one needs no Vercel project.
   that are not bundled, and it rejects `fetch(..., { redirect: 'error' })`.
 - **App secrets live in AWS Secrets Manager** (administered from `ejc3/aws`) and are set as
   Worker secrets from there, each on stdin: the read-only CloudWatch key from
-  `claude-master-dashboard/aws-reader`, the account aliases built from `claude-master/account-labels`, and the Access values from
+  `claude-master-dashboard/aws-reader` and the Access values from
   `terraform output claw_master_dashboard` in ejc3/aws. Never commit one, never print one.
   The Cloudflare deploy token is not an app secret and stays with the deploy workflow.
 - **Who may sign in is one list, kept in `ejc3/aws`.** Terraform builds the Access policy from it
   and writes the same list to the `DASHBOARD_CONFIG` KV namespace, key `allowed-emails`, which the
   app checks. Never set an allowlist on the Worker by hand or bring back a Worker secret for it.
+- **The account aliases come from claw-master's own names.** Terraform derives them from
+  `claude-master/account-labels` and writes them to the same namespace, key `account-aliases`.
+  Never set `DASHBOARD_ACCOUNT_ALIASES` on the Worker by hand: the app reads it only while that
+  key is missing, for the move.
 - **Public build-time values** (`NEXT_PUBLIC_*`) are Actions variables mapped into the build
   step of `.github/workflows/deploy.yml` (only the names mapped there reach the build).

@@ -129,32 +129,49 @@ export function cloudflareAccess(options: AccessOptions): {
 export const ALLOWLIST_BINDING = 'DASHBOARD_CONFIG'
 export const ALLOWLIST_KEY = 'allowed-emails'
 
-/** The one method of a Workers KV namespace the allowlist needs. */
+/** The one method of a Workers KV namespace the allowlist (and the account aliases) need. */
 export interface AllowlistStore {
   get(key: string): Promise<string | null>
 }
 
-/** The allowlist's text, or why there is none (a reason, never a value). */
-export type AllowlistText = { text: string } | { missing: string }
+/**
+ * A value's text, or why there is none (a reason, never a value). `cause` tells a definite absence
+ * (no binding, no such key) from a read that failed, whose `error` is the error's message.
+ */
+export type AllowlistText =
+  | { text: string }
+  | { missing: string; cause?: 'binding' | 'key' | 'read'; error?: string }
 
 /**
- * Reads the allowlist from its KV namespace. No binding, no key or a failed read each come back as
- * a reason, so the caller admits nobody and can log which.
+ * Reads one key of the DASHBOARD_CONFIG namespace (the allowlist, or the account aliases). No
+ * binding, no key or a failed read each come back as a reason, so the caller can log which.
  */
-export async function readAllowlist(
+export async function readConfigValue(
   store: AllowlistStore | null | undefined,
+  key: string,
 ): Promise<AllowlistText> {
   if (store === null || store === undefined || typeof store.get !== 'function') {
-    return { missing: `${ALLOWLIST_BINDING} (no KV binding)` }
+    return { missing: `${ALLOWLIST_BINDING} (no KV binding)`, cause: 'binding' }
   }
   let text: string | null
   try {
-    text = await store.get(ALLOWLIST_KEY)
-  } catch {
-    return { missing: `${ALLOWLIST_BINDING}/${ALLOWLIST_KEY} (read failed)` }
+    text = await store.get(key)
+  } catch (error) {
+    return {
+      missing: `${ALLOWLIST_BINDING}/${key} (read failed)`,
+      cause: 'read',
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
-  if (text === null) return { missing: `${ALLOWLIST_BINDING}/${ALLOWLIST_KEY} (no such key)` }
+  if (text === null) {
+    return { missing: `${ALLOWLIST_BINDING}/${key} (no such key)`, cause: 'key' }
+  }
   return { text }
+}
+
+/** Reads the allowlist from its KV namespace; without one the caller admits nobody. */
+export function readAllowlist(store: AllowlistStore | null | undefined): Promise<AllowlistText> {
+  return readConfigValue(store, ALLOWLIST_KEY)
 }
 
 /**

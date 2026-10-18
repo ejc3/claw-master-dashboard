@@ -8,6 +8,7 @@ import {
   accessTeamDomain,
   cloudflareAccess,
   readAllowlist,
+  readConfigValue,
 } from '../src/access'
 
 const TEAM = 'https://example.cloudflareaccess.com'
@@ -179,18 +180,37 @@ describe('readAllowlist', () => {
   })
 
   it('says which part is missing, never a value', async () => {
-    expect(await readAllowlist(undefined)).toEqual({ missing: 'DASHBOARD_CONFIG (no KV binding)' })
-    expect(await readAllowlist(null)).toEqual({ missing: 'DASHBOARD_CONFIG (no KV binding)' })
+    const noBinding = { missing: 'DASHBOARD_CONFIG (no KV binding)', cause: 'binding' }
+    expect(await readAllowlist(undefined)).toEqual(noBinding)
+    expect(await readAllowlist(null)).toEqual(noBinding)
     expect(await readAllowlist(store({ other: 'a@example.com' }))).toEqual({
       missing: 'DASHBOARD_CONFIG/allowed-emails (no such key)',
+      cause: 'key',
     })
     const failing = {
       get: async (): Promise<string | null> => {
-        throw new Error('a@example.com unreachable')
+        throw new Error('KV unavailable')
       },
     }
     expect(await readAllowlist(failing)).toEqual({
       missing: 'DASHBOARD_CONFIG/allowed-emails (read failed)',
+      cause: 'read',
+      error: 'KV unavailable',
+    })
+  })
+})
+
+describe('readConfigValue', () => {
+  it('reads any key of the namespace with the same reasons', async () => {
+    const store = { get: async (key: string) => (key === 'account-aliases' ? 'x' : null) }
+    expect(await readConfigValue(store, 'account-aliases')).toEqual({ text: 'x' })
+    expect(await readConfigValue(store, 'other')).toEqual({
+      missing: 'DASHBOARD_CONFIG/other (no such key)',
+      cause: 'key',
+    })
+    expect(await readConfigValue(undefined, 'account-aliases')).toEqual({
+      missing: 'DASHBOARD_CONFIG (no KV binding)',
+      cause: 'binding',
     })
   })
 })
