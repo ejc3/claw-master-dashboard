@@ -13,6 +13,11 @@
   // deploy, so they change here and in ejc3/aws together.
   "workers_dev": true,
   "preview_urls": false,
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // The allowlist (docs/deploy.md): ejc3/aws writes it into this namespace, key allowed-emails, from
+  // the same list as the Access policy. The real id is the production environment's
+  // DASHBOARD_CONFIG_KV_ID variable, put in place of this placeholder by the Deploy workflow; the
+  // placeholder names no namespace, so a deploy that skipped that step would fail, not admit anyone.
+  "kv_namespaces": [{ "binding": "DASHBOARD_CONFIG", "id": "00000000000000000000000000000000" }]
   // The Access settings and the AWS key are Worker secrets (docs/deploy.md); they survive deploys.
 }

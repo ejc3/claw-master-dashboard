@@ -48,7 +48,8 @@ const allowed = async () =>
   (await access.identify((await headers()).get(ACCESS_ASSERTION_HEADER))) !== null
 ```
 
-`apps/web/lib/dashboard.ts` does this, reading the settings from Worker secrets.
+`apps/web/lib/dashboard.ts` does this, reading the settings from Worker secrets and the allowlist
+from a Workers KV binding (`readAllowlist`).
 
 The reference app deploys as a Cloudflare Worker: see [docs/deploy.md](docs/deploy.md).
 The look follows an error-monitoring console (pale violet-gray page, quiet panels, one violet

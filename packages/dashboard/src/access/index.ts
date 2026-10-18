@@ -122,27 +122,68 @@ export function cloudflareAccess(options: AccessOptions): {
 }
 
 /**
+ * Where the reference app reads the allowlist: a Workers KV namespace bound as DASHBOARD_CONFIG,
+ * key allowed-emails. The deployment's infrastructure writes that key from the same list as the
+ * Access policy, so the two cannot drift apart and nobody sets the app's list by hand.
+ */
+export const ALLOWLIST_BINDING = 'DASHBOARD_CONFIG'
+export const ALLOWLIST_KEY = 'allowed-emails'
+
+/** The one method of a Workers KV namespace the allowlist needs. */
+export interface AllowlistStore {
+  get(key: string): Promise<string | null>
+}
+
+/** The allowlist's text, or why there is none (a reason, never a value). */
+export type AllowlistText = { text: string } | { missing: string }
+
+/**
+ * Reads the allowlist from its KV namespace. No binding, no key or a failed read each come back as
+ * a reason, so the caller admits nobody and can log which.
+ */
+export async function readAllowlist(
+  store: AllowlistStore | null | undefined,
+): Promise<AllowlistText> {
+  if (store === null || store === undefined || typeof store.get !== 'function') {
+    return { missing: `${ALLOWLIST_BINDING} (no KV binding)` }
+  }
+  let text: string | null
+  try {
+    text = await store.get(ALLOWLIST_KEY)
+  } catch {
+    return { missing: `${ALLOWLIST_BINDING}/${ALLOWLIST_KEY} (read failed)` }
+  }
+  if (text === null) return { missing: `${ALLOWLIST_BINDING}/${ALLOWLIST_KEY} (no such key)` }
+  return { text }
+}
+
+/**
  * String settings (process.env, or a Worker's string vars and secrets) by the names docs/deploy.md
- * uses: CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD, DASHBOARD_ALLOWED_EMAILS and the optional
- * DASHBOARD_SERVICE_TOKEN_CLIENT_ID.
+ * uses: CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD and the optional DASHBOARD_SERVICE_TOKEN_CLIENT_ID.
  */
 export type AccessEnv = Readonly<Record<string, string | undefined>>
 
 /**
- * The options for cloudflareAccess from environment settings, or the names of the required ones
- * that are missing (never their values). The allowlist takes addresses separated by commas or
- * whitespace.
+ * The options for cloudflareAccess from environment settings and the allowlist (readAllowlist), or
+ * the names of what is missing or empty (never a value). The allowlist takes addresses separated by
+ * commas or whitespace.
  */
 export function accessOptionsFromEnv(
   env: AccessEnv,
+  allowlist: AllowlistText,
 ): { options: AccessOptions } | { missing: string[] } {
   const teamDomain = env.CF_ACCESS_TEAM_DOMAIN?.trim() ?? ''
   const audience = env.CF_ACCESS_AUD?.trim() ?? ''
-  const allowedEmails = (env.DASHBOARD_ALLOWED_EMAILS ?? '').split(/[\s,]+/).filter((e) => e !== '')
+  const allowedEmails =
+    'text' in allowlist ? allowlist.text.split(/[\s,]+/).filter((e) => e !== '') : []
   const missing = [
     teamDomain === '' ? 'CF_ACCESS_TEAM_DOMAIN' : null,
     audience === '' ? 'CF_ACCESS_AUD' : null,
-    allowedEmails.length === 0 ? 'DASHBOARD_ALLOWED_EMAILS' : null,
+    'missing' in allowlist
+      ? allowlist.missing
+      : allowedEmails.length === 0
+        ? `${ALLOWLIST_BINDING}/${ALLOWLIST_KEY} (empty)`
+        : null,
   ].filter((name): name is string => name !== null)
   if (missing.length > 0) return { missing }
   const serviceTokenClientId = env.DASHBOARD_SERVICE_TOKEN_CLIENT_ID?.trim()
