@@ -1,16 +1,28 @@
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 // The account aliases come from the DASHBOARD_CONFIG namespace, key account-aliases. The
-// DASHBOARD_ACCOUNT_ALIASES secret is read only while that key is not there; once it is, the KV
-// value is the only source and an empty one means no aliases. A change is picked up after the
+// DASHBOARD_ACCOUNT_ALIASES secret is read only on a definite "no such key"; once the key exists,
+// the KV value is the only source and an empty one means no aliases. A failed read keeps the
+// aliases last read (none before the first) and never falls back. A change is picked up after the
 // app's cache runs out, and nothing logged names a person or a code.
 
-const kv: { bound: boolean; values: Record<string, string> } = { bound: false, values: {} }
+const kv: { bound: boolean; failing: boolean; values: Record<string, string> } = {
+  bound: false,
+  failing: false,
+  values: {},
+}
 
 vi.mock('@opennextjs/cloudflare', () => ({
   getCloudflareContext: async () => ({
     env: kv.bound
-      ? { DASHBOARD_CONFIG: { get: async (key: string) => kv.values[key] ?? null } }
+      ? {
+          DASHBOARD_CONFIG: {
+            get: async (key: string) => {
+              if (kv.failing) throw new Error('KV unavailable')
+              return kv.values[key] ?? null
+            },
+          },
+        }
       : {},
   }),
 }))
@@ -38,9 +50,22 @@ describe('the account aliases from KV', () => {
         'claw-master dashboard: account aliases: not set: DASHBOARD_CONFIG (no KV binding); no aliases',
       )
 
-      // The old secret, while KV has no key.
+      // Without the binding the old secret is not read either: only a missing key falls back.
       process.env.DASHBOARD_ACCOUNT_ALIASES = 'acct-0000aaaa=alpha'
+      later()
+      expect(await entries()).toEqual([])
+
+      // A failed read is not a missing key: no fallback, nothing read yet, and the error logged.
       kv.bound = true
+      kv.failing = true
+      later()
+      expect(await entries()).toEqual([])
+      expect(logged().at(-1)).toBe(
+        'claw-master dashboard: account aliases: DASHBOARD_CONFIG/account-aliases (read failed): KV unavailable; no aliases',
+      )
+
+      // The old secret, while KV definitely has no key.
+      kv.failing = false
       later()
       expect(await entries()).toEqual([['acct-0000aaaa', 'alpha']])
       expect(logged().at(-1)).toBe(
@@ -55,6 +80,21 @@ describe('the account aliases from KV', () => {
         ['acct-0000bbbb', 'bravo'],
         ['acct-0000cccc', 'charlie'],
       ])
+
+      // A failed read keeps the aliases last read, logged once while it lasts.
+      kv.failing = true
+      later()
+      const failures = logged().length
+      expect(await entries()).toHaveLength(2)
+      expect(logged().at(-1)).toBe(
+        'claw-master dashboard: account aliases: DASHBOARD_CONFIG/account-aliases (read failed): KV unavailable; keeping the aliases last read',
+      )
+      later()
+      expect(await entries()).toHaveLength(2)
+      expect(logged().length).toBe(failures + 1)
+      kv.failing = false
+      later()
+      expect(await entries()).toHaveLength(2)
 
       // A change waits for the cache to run out.
       kv.values['account-aliases'] = '# written by Terraform\nacct-0000bbbb=bravo'

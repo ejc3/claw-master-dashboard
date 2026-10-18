@@ -134,8 +134,13 @@ export interface AllowlistStore {
   get(key: string): Promise<string | null>
 }
 
-/** The allowlist's text, or why there is none (a reason, never a value). */
-export type AllowlistText = { text: string } | { missing: string }
+/**
+ * A value's text, or why there is none (a reason, never a value). `cause` tells a definite absence
+ * (no binding, no such key) from a read that failed, whose `error` is the error's message.
+ */
+export type AllowlistText =
+  | { text: string }
+  | { missing: string; cause?: 'binding' | 'key' | 'read'; error?: string }
 
 /**
  * Reads one key of the DASHBOARD_CONFIG namespace (the allowlist, or the account aliases). No
@@ -146,15 +151,21 @@ export async function readConfigValue(
   key: string,
 ): Promise<AllowlistText> {
   if (store === null || store === undefined || typeof store.get !== 'function') {
-    return { missing: `${ALLOWLIST_BINDING} (no KV binding)` }
+    return { missing: `${ALLOWLIST_BINDING} (no KV binding)`, cause: 'binding' }
   }
   let text: string | null
   try {
     text = await store.get(key)
-  } catch {
-    return { missing: `${ALLOWLIST_BINDING}/${key} (read failed)` }
+  } catch (error) {
+    return {
+      missing: `${ALLOWLIST_BINDING}/${key} (read failed)`,
+      cause: 'read',
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
-  if (text === null) return { missing: `${ALLOWLIST_BINDING}/${key} (no such key)` }
+  if (text === null) {
+    return { missing: `${ALLOWLIST_BINDING}/${key} (no such key)`, cause: 'key' }
+  }
   return { text }
 }
 

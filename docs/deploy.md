@@ -63,7 +63,7 @@ Until step 3 the running Worker reads the old secret, which is still there; from
 
 ## The account aliases
 
-Series reported under an account code (`acct-<hash>`) before the server named that account are shown under the person's name, so each person has one row. The aliases are read from KV (`DASHBOARD_CONFIG`, key `account-aliases`): one `acct-<hash>=NAME` line per person, `#` lines skipped, malformed lines ignored and counted in the log. Like the allowlist, they are read again a minute after the last reading. An empty value means no aliases; without the binding or the key the log says which, and the app falls back to the `DASHBOARD_ACCOUNT_ALIASES` Worker secret, only for the move away from it.
+Series reported under an account code (`acct-<hash>`) before the server named that account are shown under the person's name, so each person has one row. The aliases are read from KV (`DASHBOARD_CONFIG`, key `account-aliases`): one `acct-<hash>=NAME` line per person, `#` lines skipped, malformed lines ignored and counted in the log. Like the allowlist, they are read again a minute after the last reading. An empty value means no aliases. Only a definite "no such key" falls back to the `DASHBOARD_ACCOUNT_ALIASES` Worker secret, for the move away from it; without the binding there are no aliases. A failed read keeps the aliases last read (none before the first) and logs the error, never falling back. Each case is logged once, never a name or a code.
 
 The move, in this order:
 
