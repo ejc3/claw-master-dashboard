@@ -2,9 +2,12 @@ import { createLocalJWKSet, exportJWK, generateKeyPair, type JWK, SignJWT } from
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   ACCESS_ASSERTION_HEADER,
+  ALLOWLIST_BINDING,
+  ALLOWLIST_KEY,
   accessOptionsFromEnv,
   accessTeamDomain,
   cloudflareAccess,
+  readAllowlist,
 } from '../src/access'
 
 const TEAM = 'https://example.cloudflareaccess.com'
@@ -162,28 +165,74 @@ describe('cloudflareAccess', () => {
   })
 })
 
+describe('readAllowlist', () => {
+  const store = (values: Record<string, string>) => ({
+    get: async (key: string) => values[key] ?? null,
+  })
+
+  it('reads the one key Terraform writes', async () => {
+    expect(ALLOWLIST_BINDING).toBe('DASHBOARD_CONFIG')
+    expect(ALLOWLIST_KEY).toBe('allowed-emails')
+    expect(await readAllowlist(store({ 'allowed-emails': 'a@example.com,b@example.com' }))).toEqual(
+      { text: 'a@example.com,b@example.com' },
+    )
+  })
+
+  it('says which part is missing, never a value', async () => {
+    expect(await readAllowlist(undefined)).toEqual({ missing: 'DASHBOARD_CONFIG (no KV binding)' })
+    expect(await readAllowlist(null)).toEqual({ missing: 'DASHBOARD_CONFIG (no KV binding)' })
+    expect(await readAllowlist(store({ other: 'a@example.com' }))).toEqual({
+      missing: 'DASHBOARD_CONFIG/allowed-emails (no such key)',
+    })
+    const failing = {
+      get: async (): Promise<string | null> => {
+        throw new Error('a@example.com unreachable')
+      },
+    }
+    expect(await readAllowlist(failing)).toEqual({
+      missing: 'DASHBOARD_CONFIG/allowed-emails (read failed)',
+    })
+  })
+})
+
 describe('accessOptionsFromEnv', () => {
+  const list = (text: string) => ({ text })
+
   it('names each missing setting, never a value', () => {
-    expect(accessOptionsFromEnv({})).toEqual({
-      missing: ['CF_ACCESS_TEAM_DOMAIN', 'CF_ACCESS_AUD', 'DASHBOARD_ALLOWED_EMAILS'],
+    expect(accessOptionsFromEnv({}, { missing: 'DASHBOARD_CONFIG (no KV binding)' })).toEqual({
+      missing: ['CF_ACCESS_TEAM_DOMAIN', 'CF_ACCESS_AUD', 'DASHBOARD_CONFIG (no KV binding)'],
     })
     expect(
-      accessOptionsFromEnv({
-        CF_ACCESS_TEAM_DOMAIN: TEAM,
-        CF_ACCESS_AUD: AUD,
-        DASHBOARD_ALLOWED_EMAILS: ' , ',
-      }),
-    ).toEqual({ missing: ['DASHBOARD_ALLOWED_EMAILS'] })
+      accessOptionsFromEnv({ CF_ACCESS_TEAM_DOMAIN: TEAM, CF_ACCESS_AUD: AUD }, list(' , ')),
+    ).toEqual({ missing: ['DASHBOARD_CONFIG/allowed-emails (empty)'] })
+    expect(
+      accessOptionsFromEnv({ CF_ACCESS_TEAM_DOMAIN: TEAM, CF_ACCESS_AUD: AUD }, list('')),
+    ).toEqual({ missing: ['DASHBOARD_CONFIG/allowed-emails (empty)'] })
+  })
+
+  it('ignores the retired DASHBOARD_ALLOWED_EMAILS secret: the KV list is the only one', () => {
+    expect(
+      accessOptionsFromEnv(
+        {
+          CF_ACCESS_TEAM_DOMAIN: TEAM,
+          CF_ACCESS_AUD: AUD,
+          DASHBOARD_ALLOWED_EMAILS: 'a@example.com',
+        },
+        { missing: 'DASHBOARD_CONFIG/allowed-emails (no such key)' },
+      ),
+    ).toEqual({ missing: ['DASHBOARD_CONFIG/allowed-emails (no such key)'] })
   })
 
   it('splits the allowlist on commas and whitespace and drops a blank service token', () => {
     expect(
-      accessOptionsFromEnv({
-        CF_ACCESS_TEAM_DOMAIN: ` ${TEAM} `,
-        CF_ACCESS_AUD: AUD,
-        DASHBOARD_ALLOWED_EMAILS: 'a@example.com b@example.com,\nc@example.com,',
-        DASHBOARD_SERVICE_TOKEN_CLIENT_ID: '  ',
-      }),
+      accessOptionsFromEnv(
+        {
+          CF_ACCESS_TEAM_DOMAIN: ` ${TEAM} `,
+          CF_ACCESS_AUD: AUD,
+          DASHBOARD_SERVICE_TOKEN_CLIENT_ID: '  ',
+        },
+        list('a@example.com b@example.com,\nc@example.com,'),
+      ),
     ).toEqual({
       options: {
         teamDomain: TEAM,

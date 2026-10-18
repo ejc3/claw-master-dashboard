@@ -56,12 +56,23 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          DASHBOARD_CONFIG_KV_ID: ${{ vars.DASHBOARD_CONFIG_KV_ID }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::warning::Not deployed: the production environment has no CLOUDFLARE_API_TOKEN secret or CLOUDFLARE_ACCOUNT_ID variable yet (docs/deploy.md)."
             echo "### Not deployed: no deploy credentials in the production environment yet" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # The allowlist's namespace (ejc3/aws writes the list into it). Required: without the
+          # binding the Worker admits nobody, so a missing id fails the deploy and the running
+          # version stays.
+          placeholder=00000000000000000000000000000000
+          if ! printf '%s' "$DASHBOARD_CONFIG_KV_ID" | grep -Eqx '[0-9a-f]{32}' || [ "$DASHBOARD_CONFIG_KV_ID" = "$placeholder" ]; then
+            echo "::error::The production environment's DASHBOARD_CONFIG_KV_ID variable is missing or not a KV namespace id (docs/deploy.md)."
+            exit 1
+          fi
+          sed -i "s/\"id\": \"$placeholder\"/\"id\": \"$DASHBOARD_CONFIG_KV_ID\"/" wrangler.jsonc
+          grep -q "\"id\": \"$DASHBOARD_CONFIG_KV_ID\"" wrangler.jsonc
           pnpm exec wrangler deploy
       # The retired Worker goes only after ejc3/aws has turned its URL off and removed its Access
       # application in the same apply: deleting it first would leave Terraform state naming a Worker
