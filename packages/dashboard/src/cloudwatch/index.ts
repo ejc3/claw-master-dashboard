@@ -193,7 +193,7 @@ interface WireResponse {
 }
 
 // Metrics Insights keywords that must be quoted as identifiers (the catalog keeps the same list).
-const RESERVED = new Set(['result', 'window', 'from', 'to', 'type'])
+const RESERVED = new Set(['result', 'window', 'from', 'to', 'type', 'value'])
 const identifier = (name: string) => (RESERVED.has(name) ? `"${name}"` : name)
 
 /**
@@ -203,14 +203,20 @@ const identifier = (name: string) => (RESERVED.has(name) ? `"${name}"` : name)
  */
 export function gaugeQuery(
   namespace: string,
-  statistic: 'MAX' | 'MIN',
+  statistic: 'MAX' | 'MIN' | 'SUM',
   metric: string,
-  options: { where?: [string, string]; groupBy?: readonly string[] } = {},
+  options: { where?: [string, string] | Array<[string, string]>; groupBy?: readonly string[] } = {},
 ): string {
-  const where =
+  const conditions: Array<[string, string]> =
     options.where === undefined
+      ? []
+      : typeof options.where[0] === 'string'
+        ? [options.where as [string, string]]
+        : (options.where as Array<[string, string]>)
+  const where =
+    conditions.length === 0
       ? ''
-      : ` WHERE ${identifier(options.where[0])} = '${options.where[1].replace(/'/g, "''")}'`
+      : ` WHERE ${conditions.map(([name, value]) => `${identifier(name)} = '${value.replace(/'/g, "''")}'`).join(' AND ')}`
   const group =
     options.groupBy === undefined || options.groupBy.length === 0
       ? ''
@@ -418,6 +424,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         polledFiveResets,
         sessions,
         connections,
+        verdicts,
       ] = await Promise.all([
         read(gauge('MAX', 'quota.used_fraction', ['profile'])),
         read(gauge('MAX', 'quota.resets_in_seconds', ['profile'])),
@@ -438,6 +445,17 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         read(gauge('MAX', 'quota.five_hour.resets_in_seconds', ['profile'])),
         read(gauge('MAX', 'sessions.tracked', [])),
         read(gauge('MAX', 'proxy.active_connections', [])),
+        // Anthropic's overall verdict on each answer, counted per subscription: a minute with any
+        // allowed or allowed_warning is a minute Anthropic took its work.
+        read(
+          gaugeQuery(namespace, 'SUM', 'claw_master.anthropic.ratelimit.state', {
+            where: [
+              ['measure', 'status'],
+              ['window', 'all'],
+            ],
+            groupBy: ['profile', 'value'],
+          }),
+        ),
       ])
       const byLabel = (results: InsightsResult[]) => new Map(results.map((r) => [r.label, r]))
       const resetsBy = byLabel(resets)
@@ -453,6 +471,16 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         const reading = latest(result)
         if (reading === null) continue
         quantilesBy.set(profile, { ...quantilesBy.get(profile), [quantile]: reading[1] })
+      }
+      // Not through at() either: when Anthropic last took a subscription's work says nothing of how
+      // new the readings are.
+      const acceptedBy = new Map<string, EpochMs>()
+      for (const result of verdicts) {
+        const [profile, value] = splitLabel(result.label)
+        if (value !== 'allowed' && value !== 'allowed_warning') continue
+        const minute = result.points.filter(([, count]) => count > 0).at(-1)?.[0]
+        if (minute !== undefined && minute > (acceptedBy.get(profile) ?? -1))
+          acceptedBy.set(profile, minute)
       }
       // Not through at(): an hours-old 5-hour reading does not make the snapshot newer or older.
       const fiveHourBy = new Map<string, Partial<Record<string, [EpochMs, number]>>>()
@@ -509,6 +537,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
               cooldown === null || cooldown[1] <= 0 ? null : cooldown[0] + cooldown[1] * 1000,
             tokenExpiresAt: token === null ? null : token[0] + token[1] * 1000,
             latencyMs,
+            acceptedAt: acceptedBy.get(profile) ?? null,
           }
         })
         .sort((a, b) => a.profile.localeCompare(b.profile))

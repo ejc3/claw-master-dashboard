@@ -33,6 +33,12 @@ export interface ProfileStatus {
   tokenExpiresAt: EpochMs | null
   /** Request duration over the proxy's recent requests, in ms. */
   latencyMs: LatencyQuantiles
+  /**
+   * The latest minute in which Anthropic accepted the subscription's work (its overall rate-limit
+   * status allowed or allowed_warning) within the snapshot's look-back; null when it accepted none
+   * there; absent when the source cannot tell.
+   */
+  acceptedAt?: EpochMs | null
 }
 
 /** Everything the dashboard shows as "now". */

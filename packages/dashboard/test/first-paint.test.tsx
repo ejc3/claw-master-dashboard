@@ -1443,6 +1443,21 @@ describe('a subscription row', () => {
     })
     expect(refused.querySelector('.cmd-status')?.textContent).toBe('Out')
     expect(refused.textContent).toContain('Back in 2d')
+    // The poll's 100% and no work taken lately: out, back when the week resets.
+    const usedUp = render({
+      ...base,
+      weekly: { ...base.weekly, usedFraction: 1 },
+      acceptedAt: null,
+    })
+    expect(usedUp.querySelector('.cmd-status')?.textContent).toBe('Out')
+    expect(usedUp.textContent).toContain('Back in 2d')
+    // The same with work taken a minute ago: nearly out.
+    const stillTaking = render({
+      ...base,
+      weekly: { ...base.weekly, usedFraction: 1 },
+      acceptedAt: NOW - 60_000,
+    })
+    expect(stillTaking.querySelector('.cmd-status')?.textContent).toBe('Nearly out')
   })
 })
 

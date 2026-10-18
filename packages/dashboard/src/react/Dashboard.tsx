@@ -320,11 +320,12 @@ function DashboardBody(props: DashboardProps) {
   // saying "back in now" until the minute is up.
   const gapsAt = forecastClock(profilesNow, now)
   const asOf = snapshot?.asOf ?? gapsAt
-  // As the forecast should see them: the poll's 100% leaves a little (forecastProfiles), so the
-  // headline says it runs out shortly, not that it is out; a refusal holds one until it ends.
+  // As the forecast should see them: the poll's 100% leaves a little while Anthropic still takes
+  // the subscription's work (forecastProfiles), so the headline says it runs out shortly, not that
+  // it is out; a refusal holds one until it ends.
   const forecastable = useMemo(
-    () => (profilesNow === null ? null : forecastProfiles(profilesNow)),
-    [profilesNow],
+    () => (profilesNow === null ? null : forecastProfiles(profilesNow, asOf)),
+    [profilesNow, asOf],
   )
   // From the later of the readings and the clock: Anthropic has not refused what it has taken since
   // the readings, so the last percent a full window keeps counts from now, not spent already.
@@ -359,7 +360,7 @@ function DashboardBody(props: DashboardProps) {
     if (profilesNow === null) return
     const timer = setTimeout(() => {
       const at = Math.max(asOf, clock.current)
-      const profiles = forecastProfiles(profilesNow)
+      const profiles = forecastProfiles(profilesNow, at)
       // The pace at the readings, the forecast from the clock (as the headline's).
       const measured = poolGaps(profiles, asOf, smoothed, at).pace
       setAdvice(capacityAdvice(profiles, at, smoothed, at, measured))

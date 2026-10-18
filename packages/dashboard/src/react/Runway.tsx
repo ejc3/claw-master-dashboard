@@ -33,8 +33,9 @@ export function cardStatus(profile: ProfileStatus, now: EpochMs): CardStatus {
   const b = blocked(profile, now)
   if (b?.reason === 'no-reading') return 'unknown'
   if (b?.reason === 'login-expired') return 'login'
-  // Out only when Anthropic refuses it; the poll's 100% is nearly out (pollSaysUsedUp).
-  if (b?.reason === 'rate-limited') return 'out'
+  // Out when Anthropic refuses it, or the poll reads it used up and Anthropic has not taken its
+  // work lately; the poll's 100% while Anthropic still takes work is nearly out (pollSaysUsedUp).
+  if (b?.reason === 'rate-limited' || b?.reason === 'used-up') return 'out'
   if (pollSaysUsedUp(profile, now)) return 'nearly-out'
   return profile.band === 'reserve' ? 'low' : 'ok'
 }
