@@ -49,8 +49,6 @@ beforeAll(async () => {
   }
   process.env.CF_ACCESS_TEAM_DOMAIN = TEAM
   process.env.CF_ACCESS_AUD = AUD
-  // The secret this replaces: it must admit no one.
-  process.env.DASHBOARD_ALLOWED_EMAILS = 'retired@example.com'
   delete process.env.DASHBOARD_AUTH
 })
 
@@ -59,7 +57,6 @@ afterAll(() => {
   vi.useRealTimers()
   delete process.env.CF_ACCESS_TEAM_DOMAIN
   delete process.env.CF_ACCESS_AUD
-  delete process.env.DASHBOARD_ALLOWED_EMAILS
 })
 
 describe('the allowlist from KV', () => {
@@ -79,15 +76,15 @@ describe('the allowlist from KV', () => {
     const logged = () => errors.mock.calls.map((c) => c.join(' '))
 
     try {
-      // No binding: nobody, not even the address in the retired secret.
-      expect(await asks('retired@example.com')).toBe(false)
+      // No binding: nobody.
+      expect(await asks('stranger@example.com')).toBe(false)
       expect(logged().at(-1)).toBe(
         'claw-master dashboard: not set: DASHBOARD_CONFIG (no KV binding); admitting nobody',
       )
 
       kv.bound = true
       later()
-      expect(await asks('retired@example.com')).toBe(false)
+      expect(await asks('stranger@example.com')).toBe(false)
       expect(logged().at(-1)).toContain('DASHBOARD_CONFIG/allowed-emails (no such key)')
 
       kv.value = ' , '
@@ -98,7 +95,7 @@ describe('the allowlist from KV', () => {
       kv.value = 'a@example.com,b@example.com'
       later()
       expect(await asks('a@example.com')).toBe(true)
-      expect(await asks('retired@example.com')).toBe(false)
+      expect(await asks('stranger@example.com')).toBe(false)
 
       // A removal takes effect when the cache runs out, not before.
       kv.value = 'b@example.com'

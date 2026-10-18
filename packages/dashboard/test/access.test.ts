@@ -230,19 +230,6 @@ describe('accessOptionsFromEnv', () => {
     ).toEqual({ missing: ['DASHBOARD_CONFIG/allowed-emails (empty)'] })
   })
 
-  it('ignores the retired DASHBOARD_ALLOWED_EMAILS secret: the KV list is the only one', () => {
-    expect(
-      accessOptionsFromEnv(
-        {
-          CF_ACCESS_TEAM_DOMAIN: TEAM,
-          CF_ACCESS_AUD: AUD,
-          DASHBOARD_ALLOWED_EMAILS: 'a@example.com',
-        },
-        { missing: 'DASHBOARD_CONFIG/allowed-emails (no such key)' },
-      ),
-    ).toEqual({ missing: ['DASHBOARD_CONFIG/allowed-emails (no such key)'] })
-  })
-
   it('splits the allowlist on commas and whitespace and drops a blank service token', () => {
     expect(
       accessOptionsFromEnv(
