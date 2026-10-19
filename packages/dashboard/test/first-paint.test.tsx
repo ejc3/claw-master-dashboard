@@ -1443,6 +1443,29 @@ describe('a subscription row', () => {
     })
     expect(refused.querySelector('.cmd-status')?.textContent).toBe('Out')
     expect(refused.textContent).toContain('Back in 2d')
+    // The poll's 100% and no work taken lately: out, back when the week resets.
+    const usedUp = render({
+      ...base,
+      weekly: { ...base.weekly, usedFraction: 1 },
+      acceptedAt: null,
+    })
+    expect(usedUp.querySelector('.cmd-status')?.textContent).toBe('Out')
+    expect(usedUp.textContent).toContain('Back in 2d')
+    // While it is out, no 5-hour row (no pace to run out at); with recent work it keeps it.
+    const withFive = {
+      ...base,
+      weekly: { ...base.weekly, usedFraction: 1 },
+      fiveHour: { usedFraction: 0.8, resetsAt: NOW + 2 * HOUR_MS, lengthMs: 5 * HOUR_MS },
+    }
+    expect(render({ ...withFive, acceptedAt: null }).textContent).not.toContain('5-hour')
+    expect(render({ ...withFive, acceptedAt: NOW - 60_000 }).textContent).toContain('5-hour')
+    // The same with work taken a minute ago: nearly out.
+    const stillTaking = render({
+      ...base,
+      weekly: { ...base.weekly, usedFraction: 1 },
+      acceptedAt: NOW - 60_000,
+    })
+    expect(stillTaking.querySelector('.cmd-status')?.textContent).toBe('Nearly out')
   })
 })
 

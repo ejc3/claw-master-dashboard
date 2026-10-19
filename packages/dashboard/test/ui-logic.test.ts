@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ACCEPTED_RECENTLY_MS,
   BadQueryError,
+  blocked,
   FIVE_HOURS_MS,
   fiveHourLeft,
   forecastProfiles,
@@ -122,6 +124,63 @@ describe('headline', () => {
     expect(pollSaysUsedUp(profile('a', { fiveHour: reset }), NOW)).toBe(false)
   })
 
+  it("counts the poll's 100% as out until its reset unless Anthropic took the subscription's work lately", () => {
+    const weekSpent = { usedFraction: 1, resetsAt: NOW + 26 * HOUR_MS, lengthMs: WEEK_MS }
+    const fiveSpent = { usedFraction: 1, resetsAt: NOW + 2 * HOUR_MS, lengthMs: FIVE_HOURS_MS }
+    // Nothing accepted in the look-back: out until the week (or, with only the 5-hour window used
+    // up, that window) resets.
+    const idle = profile('a', { weekly: weekSpent, acceptedAt: null })
+    expect(hasHeadroom(idle, NOW)).toBe(false)
+    expect(blocked(idle, NOW)).toEqual({ reason: 'used-up', until: NOW + 26 * HOUR_MS })
+    expect(pollSaysUsedUp(idle, NOW)).toBe(false)
+    expect(blocked(profile('a', { fiveHour: fiveSpent, acceptedAt: null }), NOW)).toEqual({
+      reason: 'used-up',
+      until: NOW + 2 * HOUR_MS,
+    })
+    // Taken longer ago than ACCEPTED_RECENTLY_MS: still out.
+    const stale = profile('a', {
+      weekly: weekSpent,
+      acceptedAt: NOW - ACCEPTED_RECENTLY_MS - 60_000,
+    })
+    expect(blocked(stale, NOW)?.reason).toBe('used-up')
+    // Anthropic took its work this minute: its last percent is still being spent, so nearly out.
+    const busy = profile('a', { weekly: weekSpent, acceptedAt: NOW - 60_000 })
+    expect(blocked(busy, NOW)).toBeNull()
+    expect(pollSaysUsedUp(busy, NOW)).toBe(true)
+    // A refusal still says so, and below 100% nothing changes.
+    const refused = profile('a', {
+      weekly: weekSpent,
+      acceptedAt: null,
+      rateLimitedUntil: NOW + HOUR_MS,
+    })
+    expect(blocked(refused, NOW)?.reason).toBe('rate-limited')
+    expect(blocked(profile('a', { acceptedAt: null }), NOW)).toBeNull()
+    // Both windows used up: back when the later one resets; unknown if a used-up one's reset is.
+    const both = profile('a', {
+      weekly: { ...weekSpent, resetsAt: NOW + HOUR_MS },
+      fiveHour: { ...fiveSpent, resetsAt: NOW + 3 * HOUR_MS },
+      acceptedAt: null,
+    })
+    expect(blocked(both, NOW)?.until).toBe(NOW + 3 * HOUR_MS)
+    const unknownReset = profile('a', {
+      fiveHour: { ...fiveSpent, resetsAt: null },
+      acceptedAt: null,
+    })
+    expect(blocked(unknownReset, NOW)).toEqual({ reason: 'used-up', until: null })
+    // Exactly ACCEPTED_RECENTLY_MS ago still counts; a reading from the future does not.
+    expect(
+      blocked(profile('a', { weekly: weekSpent, acceptedAt: NOW - ACCEPTED_RECENTLY_MS }), NOW),
+    ).toBeNull()
+    expect(
+      blocked(profile('a', { weekly: weekSpent, acceptedAt: NOW + HOUR_MS }), NOW)?.reason,
+    ).toBe('used-up')
+    // The forecast keeps the last percent only for the subscription Anthropic is still taking work from.
+    expect(forecastProfiles([idle], NOW)[0]?.weekly.usedFraction).toBe(1)
+    expect(forecastProfiles([busy], NOW)[0]?.weekly.usedFraction).toBe(1 - POLL_FULL_LEFT)
+    // Judged at the clock it is given: the same reading 20 minutes on is out.
+    expect(forecastProfiles([busy], NOW + 20 * 60_000)[0]?.weekly.usedFraction).toBe(1)
+  })
+
   it('says when the first refused subscription takes work again', () => {
     const later = profile('later', { rateLimitedUntil: NOW + 9 * HOUR_MS })
     const limited = profile('limited', { rateLimitedUntil: NOW + 2 * HOUR_MS })
@@ -139,27 +198,27 @@ describe('headline', () => {
       weekly: { usedFraction: 1, resetsAt: NOW + HOUR_MS, lengthMs: WEEK_MS },
       fiveHour: { usedFraction: 1, resetsAt: NOW + HOUR_MS, lengthMs: FIVE_HOURS_MS },
     })
-    const [seen] = forecastProfiles([pollFull])
+    const [seen] = forecastProfiles([pollFull], NOW)
     expect(seen?.weekly.usedFraction).toBe(1 - POLL_FULL_LEFT)
     expect(seen?.fiveHour?.usedFraction).toBe(1 - POLL_FULL_LEFT)
     // A refused one too: its refusal holds it until it ends, then claw-master asks again.
     const refused = { ...pollFull, rateLimitedUntil: NOW + 10 * 60_000 }
-    expect(forecastProfiles([refused])[0]?.weekly.usedFraction).toBe(1 - POLL_FULL_LEFT)
+    expect(forecastProfiles([refused], NOW)[0]?.weekly.usedFraction).toBe(1 - POLL_FULL_LEFT)
     // So a 10-minute refusal on a poll-full week resetting in 9 hours is back in 10 minutes.
     const nineHours = {
       ...refused,
       weekly: { usedFraction: 1, resetsAt: NOW + 9 * HOUR_MS, lengthMs: WEEK_MS },
       fiveHour: null,
     }
-    const back = poolGaps(forecastProfiles([nineHours]), NOW, new Map([['a', 0]]), NOW).gaps[0]
+    const back = poolGaps(forecastProfiles([nineHours], NOW), NOW, new Map([['a', 0]]), NOW).gaps[0]
     expect(back?.end).toBe(NOW + 10 * 60_000)
     // Refused through the reset: nothing of that week is left, so nothing is counted unused at it.
     const throughReset = { ...nineHours, rateLimitedUntil: NOW + 9 * HOUR_MS }
-    expect(forecastProfiles([throughReset])[0]?.weekly.usedFraction).toBe(1)
-    const g = poolGaps(forecastProfiles([throughReset]), NOW, new Map([['a', 0]]), NOW)
+    expect(forecastProfiles([throughReset], NOW)[0]?.weekly.usedFraction).toBe(1)
+    const g = poolGaps(forecastProfiles([throughReset], NOW), NOW, new Map([['a', 0]]), NOW)
     expect(g.unusedAtReset).toEqual([])
     const half = profile('b')
-    expect(forecastProfiles([half])[0]?.weekly).toBe(half.weekly)
+    expect(forecastProfiles([half], NOW)[0]?.weekly).toBe(half.weekly)
   })
 })
 

@@ -101,6 +101,17 @@ function snapshotAnswers(): Answer {
           result('api-backup 0.5', [[latest, 660]]),
           result('none 0.5', [[latest, 100]]),
         ]
+      if (expression.includes('anthropic.ratelimit.state'))
+        return [
+          // alpha: Anthropic took its work two minutes in and refused one later; bravo: refused only.
+          result('alpha allowed', [
+            [t0 + 2 * 60_000, 3],
+            [t0 + 5 * 60_000, 0],
+          ]),
+          result('alpha rejected', [[t0 + 6 * 60_000, 1]]),
+          result('alpha allowed_warning', [[t0 + 1 * 60_000, 1]]),
+          result('bravo rejected', [[latest, 2]]),
+        ]
       if (expression.includes('anthropic.ratelimit'))
         return [
           result('alpha utilization', [[latest, 0.32]]),
@@ -269,7 +280,7 @@ describe('createCloudWatchSource', () => {
     const { src, requests } = source(snapshotAnswers())
     const snapshot = await src.snapshot()
     const latest = t0 + 9 * 60_000
-    expect(requests).toHaveLength(11)
+    expect(requests).toHaveLength(12)
     const expressions = requests.map((r) => r.expression)
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
@@ -281,6 +292,9 @@ describe('createCloudWatchSource', () => {
       'SELECT MAX("claw_master.anthropic.ratelimit") FROM "ClawMaster" WHERE "window" = \'5h\' GROUP BY profile, measure',
     )
     expect(expressions).toContain('SELECT MAX("claw_master.sessions.tracked") FROM "ClawMaster"')
+    expect(expressions).toContain(
+      'SELECT SUM("claw_master.anthropic.ratelimit.state") FROM "ClawMaster" WHERE measure = \'status\' AND "window" = \'all\' GROUP BY profile, "value"',
+    )
     for (const { body, expression } of requests) {
       expect(body.EndTime).toBe(SEC(NOW + 60_000))
       // The 5-hour reading is looked for over its whole window; the rest over minutes.
@@ -288,7 +302,7 @@ describe('createCloudWatchSource', () => {
         SEC(
           NOW +
             60_000 -
-            (expression.includes('anthropic.ratelimit')
+            (expression.includes('anthropic.ratelimit")')
               ? FIVE_HOUR_LOOKBACK_MS
               : SNAPSHOT_LOOKBACK_MS),
         ),
@@ -322,6 +336,9 @@ describe('createCloudWatchSource', () => {
     expect(bravo.fiveHour).toBeNull()
     expect(bravo.rateLimitedUntil).toBe(latest + 420_000)
     expect(bravo.latencyMs).toEqual({ p50: null, p95: null, p99: null })
+    // The last minute Anthropic took its work (a refusal is not that); none for bravo.
+    expect(alpha.acceptedAt).toBe(t0 + 2 * 60_000)
+    expect(bravo.acceptedAt).toBeNull()
   })
 
   it('keeps a 5-hour reading from hours ago while its window runs, and none once it has reset', async () => {

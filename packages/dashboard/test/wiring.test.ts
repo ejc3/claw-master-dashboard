@@ -28,7 +28,7 @@ describe('Headline wiring', () => {
     expect(source).toMatch(/const asOf = snapshot\?\.asOf \?\? gapsAt/)
     // On the subscriptions as the forecast sees them: the poll's 100% leaves a little where
     // Anthropic has not refused (forecastProfiles).
-    expect(source).toMatch(/forecastProfiles\(profilesNow\)/)
+    expect(source).toMatch(/forecastProfiles\(profilesNow, gapsAt\)/)
     // From the later of the readings and the clock: the last percent counts from now.
     expect(source).toMatch(/const forecastFrom = Math\.max\(asOf, gapsAt\)/)
     // The pace measured at the readings, the forecast run from the clock.

@@ -33,8 +33,9 @@ export function cardStatus(profile: ProfileStatus, now: EpochMs): CardStatus {
   const b = blocked(profile, now)
   if (b?.reason === 'no-reading') return 'unknown'
   if (b?.reason === 'login-expired') return 'login'
-  // Out only when Anthropic refuses it; the poll's 100% is nearly out (pollSaysUsedUp).
-  if (b?.reason === 'rate-limited') return 'out'
+  // Out when Anthropic refuses it, or the poll reads it used up and Anthropic has not taken its
+  // work lately; the poll's 100% while Anthropic still takes work is nearly out (pollSaysUsedUp).
+  if (b?.reason === 'rate-limited' || b?.reason === 'used-up') return 'out'
   if (pollSaysUsedUp(profile, now)) return 'nearly-out'
   return profile.band === 'reserve' ? 'low' : 'ok'
 }
@@ -174,9 +175,9 @@ export function RunwayCard({
         </p>
       </div>
       <WindowRow name="Weekly" window={status.weekly} now={now} />
-      {/* No 5-hour row while Anthropic refuses the subscription (nothing is left of it then), nor
-          without a reading. */}
-      {status.fiveHour !== null && b?.reason !== 'rate-limited' && (
+      {/* No 5-hour row while the subscription is out (refused, or used up with no work taken
+          lately: nothing is left of it until it is back, so no pace either), nor without a reading. */}
+      {status.fiveHour !== null && b?.reason !== 'rate-limited' && b?.reason !== 'used-up' && (
         <WindowRow
           name="5-hour"
           window={fiveHourAt(status.fiveHour, now) ?? status.fiveHour}

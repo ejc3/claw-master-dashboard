@@ -24,15 +24,30 @@ export function fiveHourAt(window: QuotaWindow | null, at: EpochMs): QuotaWindow
 
 /**
  * Why a subscription cannot take work right now, and until when (null when unknown, e.g. a
- * login that has expired needs someone to fix it). Only Anthropic decides that a subscription is
- * out: it refuses (a 429, which claw-master holds as rate-limited until Anthropic's reset). The
- * usage poll does not: it reads whole percents, so its 100% can still be under Anthropic's, and
- * claw-master keeps sending work until Anthropic refuses (see pollSaysUsedUp).
+ * login that has expired needs someone to fix it). Anthropic refusing it (a 429, which
+ * claw-master holds as rate-limited until Anthropic's reset) takes it out. So does the usage poll
+ * reading a window as used up when Anthropic has not taken the subscription's work in the last
+ * ACCEPTED_RECENTLY_MS: the poll reads whole percents, so its 100% can still be under Anthropic's,
+ * but only work Anthropic is still accepting shows that (see pollSaysUsedUp). Without it the
+ * subscription stays out until that window resets.
  */
 export type Blocked =
   | { reason: 'no-reading'; until: null }
   | { reason: 'login-expired'; until: null }
   | { reason: 'rate-limited'; until: EpochMs | null }
+  | { reason: 'used-up'; until: EpochMs | null }
+
+/** How recently Anthropic must have accepted a subscription's work for the poll's 100% to leave it nearly out. */
+export const ACCEPTED_RECENTLY_MS = 15 * 60_000
+
+/**
+ * Whether Anthropic took the subscription's work lately; a source that cannot tell counts as yes.
+ * The reading is the start of a minute at or before the snapshot, so a later one is not believed.
+ */
+function acceptedRecently(profile: ProfileStatus, now: EpochMs): boolean {
+  const at = profile.acceptedAt
+  return at === undefined || (at !== null && at >= now - ACCEPTED_RECENTLY_MS && at <= now + 60_000)
+}
 
 /** Null when the subscription can take work. */
 export function blocked(profile: ProfileStatus, now: EpochMs): Blocked | null {
@@ -43,12 +58,21 @@ export function blocked(profile: ProfileStatus, now: EpochMs): Blocked | null {
   if (profile.rateLimitedUntil !== null && profile.rateLimitedUntil > now) {
     return { reason: 'rate-limited', until: profile.rateLimitedUntil }
   }
+  // Back when every used-up window has reset: the later reset, unknown if either is.
+  const full = [profile.weekly, fiveHourAt(profile.fiveHour, now)].filter((w): w is QuotaWindow =>
+    readFull(w, now),
+  )
+  if (full.length > 0 && !acceptedRecently(profile, now)) {
+    const resets = full.map((w) => w.resetsAt)
+    const until = resets.includes(null) ? null : Math.max(...(resets as EpochMs[]))
+    return { reason: 'used-up', until }
+  }
   return null
 }
 
 /**
  * Whether the usage poll reads a subscription's week or open 5-hour window as used up while
- * Anthropic has not refused it: nearly out, its last percent or so still taking work.
+ * Anthropic is still accepting its work: nearly out, its last percent or so still taking work.
  */
 export function pollSaysUsedUp(profile: ProfileStatus, now: EpochMs): boolean {
   return (
@@ -79,18 +103,21 @@ export const POLL_FULL_LEFT = 0.01
 
 /**
  * The subscriptions as the forecast should see them: a window the poll reads as used up keeps
- * POLL_FULL_LEFT, so the forecast has it run out shortly instead of being out already. A refused
- * subscription whose refusal ends before the window resets gets it too (claw-master asks Anthropic
- * again then); one refused through the reset has nothing left of that window, so it stays as read
- * (else the forecast would count that percent as left unused at the reset).
+ * POLL_FULL_LEFT while Anthropic still accepts the subscription's work, so the forecast has it run
+ * out shortly instead of being out already. A refused subscription whose refusal ends before the
+ * window resets gets it too (claw-master asks Anthropic again then); one refused through the reset,
+ * or one Anthropic has not taken work from lately, has nothing left of that window, so it stays as
+ * read (else the forecast would count that percent as left unused at the reset).
  */
-export function forecastProfiles(profiles: ProfileStatus[]): ProfileStatus[] {
+export function forecastProfiles(profiles: ProfileStatus[], now: EpochMs): ProfileStatus[] {
   return profiles.map((p) => {
     const cap = (w: QuotaWindow | null): QuotaWindow | null => {
       if (w === null || w.usedFraction === null || w.usedFraction < 1) return w
       const refusedThroughReset =
         p.rateLimitedUntil !== null && w.resetsAt !== null && p.rateLimitedUntil >= w.resetsAt
-      return refusedThroughReset ? w : { ...w, usedFraction: 1 - POLL_FULL_LEFT }
+      const refusedForNow = p.rateLimitedUntil !== null && p.rateLimitedUntil > now
+      const keepsLastPercent = !refusedThroughReset && (refusedForNow || acceptedRecently(p, now))
+      return keepsLastPercent ? { ...w, usedFraction: 1 - POLL_FULL_LEFT } : w
     }
     return { ...p, weekly: cap(p.weekly) ?? p.weekly, fiveHour: cap(p.fiveHour) }
   })
