@@ -324,8 +324,8 @@ function DashboardBody(props: DashboardProps) {
   // the subscription's work (forecastProfiles), so the headline says it runs out shortly, not that
   // it is out; a refusal holds one until it ends.
   const forecastable = useMemo(
-    () => (profilesNow === null ? null : forecastProfiles(profilesNow, asOf)),
-    [profilesNow, asOf],
+    () => (profilesNow === null ? null : forecastProfiles(profilesNow, gapsAt)),
+    [profilesNow, gapsAt],
   )
   // From the later of the readings and the clock: Anthropic has not refused what it has taken since
   // the readings, so the last percent a full window keeps counts from now, not spent already.

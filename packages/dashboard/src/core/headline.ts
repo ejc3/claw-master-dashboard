@@ -40,10 +40,13 @@ export type Blocked =
 /** How recently Anthropic must have accepted a subscription's work for the poll's 100% to leave it nearly out. */
 export const ACCEPTED_RECENTLY_MS = 15 * 60_000
 
-/** Whether Anthropic took the subscription's work lately; a source that cannot tell counts as yes. */
+/**
+ * Whether Anthropic took the subscription's work lately; a source that cannot tell counts as yes.
+ * The reading is the start of a minute at or before the snapshot, so a later one is not believed.
+ */
 function acceptedRecently(profile: ProfileStatus, now: EpochMs): boolean {
   const at = profile.acceptedAt
-  return at === undefined || (at !== null && at >= now - ACCEPTED_RECENTLY_MS)
+  return at === undefined || (at !== null && at >= now - ACCEPTED_RECENTLY_MS && at <= now + 60_000)
 }
 
 /** Null when the subscription can take work. */
@@ -55,13 +58,14 @@ export function blocked(profile: ProfileStatus, now: EpochMs): Blocked | null {
   if (profile.rateLimitedUntil !== null && profile.rateLimitedUntil > now) {
     return { reason: 'rate-limited', until: profile.rateLimitedUntil }
   }
-  const weekFull = readFull(profile.weekly, now)
-  const five = fiveHourAt(profile.fiveHour, now)
-  if ((weekFull || readFull(five, now)) && !acceptedRecently(profile, now)) {
-    return {
-      reason: 'used-up',
-      until: weekFull ? profile.weekly.resetsAt : (five?.resetsAt ?? null),
-    }
+  // Back when every used-up window has reset: the later reset, unknown if either is.
+  const full = [profile.weekly, fiveHourAt(profile.fiveHour, now)].filter((w): w is QuotaWindow =>
+    readFull(w, now),
+  )
+  if (full.length > 0 && !acceptedRecently(profile, now)) {
+    const resets = full.map((w) => w.resetsAt)
+    const until = resets.includes(null) ? null : Math.max(...(resets as EpochMs[]))
+    return { reason: 'used-up', until }
   }
   return null
 }

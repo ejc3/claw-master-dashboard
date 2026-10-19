@@ -175,9 +175,9 @@ export function RunwayCard({
         </p>
       </div>
       <WindowRow name="Weekly" window={status.weekly} now={now} />
-      {/* No 5-hour row while Anthropic refuses the subscription (nothing is left of it then), nor
-          without a reading. */}
-      {status.fiveHour !== null && b?.reason !== 'rate-limited' && (
+      {/* No 5-hour row while the subscription is out (refused, or used up with no work taken
+          lately: nothing is left of it until it is back, so no pace either), nor without a reading. */}
+      {status.fiveHour !== null && b?.reason !== 'rate-limited' && b?.reason !== 'used-up' && (
         <WindowRow
           name="5-hour"
           window={fiveHourAt(status.fiveHour, now) ?? status.fiveHour}

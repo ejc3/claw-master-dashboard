@@ -155,9 +155,30 @@ describe('headline', () => {
     })
     expect(blocked(refused, NOW)?.reason).toBe('rate-limited')
     expect(blocked(profile('a', { acceptedAt: null }), NOW)).toBeNull()
+    // Both windows used up: back when the later one resets; unknown if a used-up one's reset is.
+    const both = profile('a', {
+      weekly: { ...weekSpent, resetsAt: NOW + HOUR_MS },
+      fiveHour: { ...fiveSpent, resetsAt: NOW + 3 * HOUR_MS },
+      acceptedAt: null,
+    })
+    expect(blocked(both, NOW)?.until).toBe(NOW + 3 * HOUR_MS)
+    const unknownReset = profile('a', {
+      fiveHour: { ...fiveSpent, resetsAt: null },
+      acceptedAt: null,
+    })
+    expect(blocked(unknownReset, NOW)).toEqual({ reason: 'used-up', until: null })
+    // Exactly ACCEPTED_RECENTLY_MS ago still counts; a reading from the future does not.
+    expect(
+      blocked(profile('a', { weekly: weekSpent, acceptedAt: NOW - ACCEPTED_RECENTLY_MS }), NOW),
+    ).toBeNull()
+    expect(
+      blocked(profile('a', { weekly: weekSpent, acceptedAt: NOW + HOUR_MS }), NOW)?.reason,
+    ).toBe('used-up')
     // The forecast keeps the last percent only for the subscription Anthropic is still taking work from.
     expect(forecastProfiles([idle], NOW)[0]?.weekly.usedFraction).toBe(1)
     expect(forecastProfiles([busy], NOW)[0]?.weekly.usedFraction).toBe(1 - POLL_FULL_LEFT)
+    // Judged at the clock it is given: the same reading 20 minutes on is out.
+    expect(forecastProfiles([busy], NOW + 20 * 60_000)[0]?.weekly.usedFraction).toBe(1)
   })
 
   it('says when the first refused subscription takes work again', () => {

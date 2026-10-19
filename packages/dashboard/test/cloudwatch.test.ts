@@ -109,6 +109,7 @@ function snapshotAnswers(): Answer {
             [t0 + 5 * 60_000, 0],
           ]),
           result('alpha rejected', [[t0 + 6 * 60_000, 1]]),
+          result('alpha allowed_warning', [[t0 + 1 * 60_000, 1]]),
           result('bravo rejected', [[latest, 2]]),
         ]
       if (expression.includes('anthropic.ratelimit'))

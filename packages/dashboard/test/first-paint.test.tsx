@@ -1451,6 +1451,14 @@ describe('a subscription row', () => {
     })
     expect(usedUp.querySelector('.cmd-status')?.textContent).toBe('Out')
     expect(usedUp.textContent).toContain('Back in 2d')
+    // While it is out, no 5-hour row (no pace to run out at); with recent work it keeps it.
+    const withFive = {
+      ...base,
+      weekly: { ...base.weekly, usedFraction: 1 },
+      fiveHour: { usedFraction: 0.8, resetsAt: NOW + 2 * HOUR_MS, lengthMs: 5 * HOUR_MS },
+    }
+    expect(render({ ...withFive, acceptedAt: null }).textContent).not.toContain('5-hour')
+    expect(render({ ...withFive, acceptedAt: NOW - 60_000 }).textContent).toContain('5-hour')
     // The same with work taken a minute ago: nearly out.
     const stillTaking = render({
       ...base,
