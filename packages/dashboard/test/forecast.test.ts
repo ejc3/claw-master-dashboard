@@ -132,6 +132,25 @@ describe('weekPerFiveHourWindow', () => {
     expect(weekPerFiveHourWindow([weeklyA], [lastDay], NOW)).toBeCloseTo(0.24 / 4.75, 9)
   })
 
+  it('measures both from the same first and last reading when buckets are missing', () => {
+    // The week is not read at NOW-3h, so both rises run from NOW-2h: 0.1 of the week against 0.75
+    // of a window (not 0.8 of one from NOW-3h).
+    const h = (n: number) => NOW - n * HOUR_MS
+    const week: Array<[number, number]> = [
+      [h(4), 0],
+      [h(2), 0.1],
+      [h(0), 0.2],
+    ]
+    const fiveHour: Array<[number, number]> = [
+      [h(3), 0.2],
+      [h(2), 0.25],
+      [h(0), 1],
+    ]
+    expect(
+      weekPerFiveHourWindow([{ key: 'a', points: week }], [{ key: 'a', points: fiveHour }], NOW),
+    ).toBeCloseTo(0.1 / 0.75, 9)
+  })
+
   it('counts only subscriptions read in both windows', () => {
     // b's week rose too, but with no 5-hour readings it says nothing about the cost.
     const r = weekPerFiveHourWindow([weeklyA, rising('b', 48, 0.02)], [fiveA], NOW)

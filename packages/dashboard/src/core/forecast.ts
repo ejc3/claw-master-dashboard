@@ -126,19 +126,41 @@ export function weekPerFiveHourWindow(
   for (const s of weekly) {
     const five = fiveByKey.get(s.key)
     if (five === undefined) continue
-    const w = riseOver(s.points, now, WEEK_PER_WINDOW_SPAN_MS)
-    const f = riseOver(five, now, WEEK_PER_WINDOW_SPAN_MS)
-    if (w === null || f === null) continue
-    const start = Math.max(w.first, f.first)
-    const end = Math.min(w.last, f.last)
-    const sharedW = riseOver(s.points, end, end - start)
-    const sharedF = riseOver(five, end, end - start)
-    if (sharedW === null || sharedF === null) continue
-    weekRise += sharedW.rise
-    fiveRise += sharedF.rise
+    const shared = sharedRises(s.points, five, now, WEEK_PER_WINDOW_SPAN_MS)
+    if (shared === null) continue
+    weekRise += shared[0]
+    fiveRise += shared[1]
   }
   if (fiveRise < MIN_WINDOWS_MEASURED || weekRise <= 0) return null
   return weekRise / fiveRise
+}
+
+/**
+ * Two series' rises over the same time: from the later of their first readings in the span to the
+ * earlier of their last, narrowed until both have a reading at each end (a missing bucket in one
+ * would otherwise leave it measured over less time). Null when they share under an hour.
+ */
+function sharedRises(
+  a: Array<[EpochMs, number]>,
+  b: Array<[EpochMs, number]>,
+  now: EpochMs,
+  spanMs: number,
+): [number, number] | null {
+  let start = now - spanMs
+  let end = now
+  for (;;) {
+    const ra = riseOver(a, end, end - start)
+    const rb = riseOver(b, end, end - start)
+    if (ra === null || rb === null) return null
+    const first = Math.max(ra.first, rb.first)
+    const last = Math.min(ra.last, rb.last)
+    if (first === ra.first && first === rb.first && last === ra.last && last === rb.last) {
+      return [ra.rise, rb.rise]
+    }
+    // Each pass moves an end to a reading inside the last bounds, so this ends.
+    start = first
+    end = last
+  }
 }
 
 /** The pool's demand as measured from both windows' readings; null where they cannot tell. */

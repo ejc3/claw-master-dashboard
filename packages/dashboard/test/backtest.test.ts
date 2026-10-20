@@ -96,6 +96,17 @@ function score(pooled: boolean) {
 }
 
 describe('the forecast against the pool’s own October history', () => {
+  it("reads what the page's query returns: none of the bucket still filling, nothing later", () => {
+    // Five minutes into a 10-minute step: the range ends at the step, exclusive.
+    const t0 = (fixture.points[4]?.t0 as EpochMs) + 5 * 60_000
+    const { start, end } = readingsQuery(t0).range
+    expect(end).toBe(t0 - 5 * 60_000)
+    const times = series('weekly', t0).flatMap((s) => s.points.map(([t]) => t))
+    expect(times.length).toBeGreaterThan(0)
+    expect(Math.min(...times)).toBeGreaterThanOrEqual(start)
+    expect(Math.max(...times)).toBe(end - fixture.stepMs)
+  })
+
   it('has the points it was measured on', () => {
     const s = score(true)
     expect(s.points).toBe(24)
