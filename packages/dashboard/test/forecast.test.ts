@@ -101,6 +101,13 @@ describe('poolBurnRate', () => {
     expect(apart).toBeCloseTo(0.04, 9)
   })
 
+  it("counts a newcomer's first minutes: the hour of readings is the pool's, not each one's", () => {
+    // Flat all day; a newcomer took 0.1 in its first half hour.
+    const flat = rising('a', 24, 0)
+    const newcomer = rising('b', 0.5, 0.2)
+    expect(poolBurnRate([flat, newcomer], NOW, 24 * HOUR_MS)).toBeCloseTo(0.1 / 24, 9)
+  })
+
   it('is null without an hour of readings', () => {
     expect(poolBurnRate([], NOW, 24 * HOUR_MS)).toBeNull()
     expect(poolBurnRate([{ key: 'a', points: [[NOW, 0.5]] }], NOW, 24 * HOUR_MS)).toBeNull()
@@ -115,6 +122,14 @@ const fiveA = rising('a', 48, 0.25, 5)
 describe('weekPerFiveHourWindow', () => {
   it('divides the weekly rise by the 5-hour rise, resets counted as new use', () => {
     expect(weekPerFiveHourWindow([weeklyA], [fiveA], NOW)).toBeCloseTo(0.48 / 9.75, 9)
+  })
+
+  it('takes both rises over the time both windows were read', () => {
+    // 5-hour readings for only the last day: the week's rise over that day (0.24), not its 48
+    // hours (0.48), against the 5-hour rise.
+    const lastDay = { key: 'a', points: fiveA.points.filter(([t]) => t >= NOW - 24 * HOUR_MS) }
+    // From NOW-24h a window is full; four more fill, and the last runs three hours: 4.75.
+    expect(weekPerFiveHourWindow([weeklyA], [lastDay], NOW)).toBeCloseTo(0.24 / 4.75, 9)
   })
 
   it('counts only subscriptions read in both windows', () => {

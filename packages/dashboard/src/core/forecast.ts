@@ -47,13 +47,15 @@ export function burnRate(
 
 /**
  * How much a used share rose over the span ending at `now`, counting a reset's fall as the start of
- * new use (as burnRate); null without readings covering MIN_SMOOTHING_COVERAGE_MS of it.
+ * new use (as burnRate), and the time from its first reading there to its last; null without
+ * readings covering `minCoveredMs` of it.
  */
 export function riseOver(
   points: Array<[EpochMs, number]>,
   now: EpochMs,
   spanMs: number,
-): { rise: number; coveredMs: number } | null {
+  minCoveredMs: number = MIN_SMOOTHING_COVERAGE_MS,
+): { rise: number; coveredMs: number; first: EpochMs; last: EpochMs } | null {
   const byTime = new Map<EpochMs, number>()
   for (const [t, v] of points) {
     if (!Number.isFinite(t) || !Number.isFinite(v) || t < now - spanMs || t > now) continue
@@ -64,7 +66,7 @@ export function riseOver(
   const last = readings[readings.length - 1]
   if (first === undefined || last === undefined) return null
   const covered = last[0] - first[0]
-  if (covered < MIN_SMOOTHING_COVERAGE_MS) return null
+  if (covered < minCoveredMs) return null
   let rise = 0
   let peak = first[1]
   for (const [, v] of readings.slice(1)) {
@@ -76,7 +78,7 @@ export function riseOver(
       peak = v
     }
   }
-  return { rise, coveredMs: covered }
+  return { rise, coveredMs: covered, first: first[0], last: last[0] }
 }
 
 /** The span over which what a full 5-hour window costs of the week is measured. */
@@ -91,24 +93,26 @@ type Readings = ReadonlyArray<{ key: string; points: Array<[EpochMs, number]> }>
  * The pool's weekly burn rate, in one subscription's allowance per hour: every subscription's rise
  * over the span, over the longest time any of them covers. Not the sum of each one's own rate: one
  * that joined an hour ago took work the others would have, and its rise over that hour alone would
- * count the pool's demand twice. Null without readings covering MIN_SMOOTHING_COVERAGE_MS.
+ * count the pool's demand twice. Every rise counts, however short its readings; the pool's must
+ * cover MIN_SMOOTHING_COVERAGE_MS, else null.
  */
 export function poolBurnRate(weekly: Readings, now: EpochMs, spanMs: number): number | null {
   let rise = 0
   let covered = 0
   for (const s of weekly) {
-    const r = riseOver(s.points, now, spanMs)
+    const r = riseOver(s.points, now, spanMs, 0)
     if (r === null) continue
     rise += r.rise
     covered = Math.max(covered, r.coveredMs)
   }
-  return covered === 0 ? null : (rise / covered) * HOUR_MS
+  return covered < MIN_SMOOTHING_COVERAGE_MS ? null : (rise / covered) * HOUR_MS
 }
 
 /**
  * What a full 5-hour window costs of the week, from the pool's own readings: the weekly rise over
  * the 5-hour rise, summed over the subscriptions read in both, over the last
- * WEEK_PER_WINDOW_SPAN_MS. The same work spends both windows, so this ties the two paces together
+ * WEEK_PER_WINDOW_SPAN_MS. Each subscription's two rises are taken over the same time, the part
+ * of the span both windows' readings cover, so a gap in one does not skew the cost. The same work spends both windows, so this ties the two paces together
  * (0.25 to 0.29 from 2026-10-12 to 10-19). Null with too little 5-hour use to tell.
  */
 export function weekPerFiveHourWindow(
@@ -125,8 +129,13 @@ export function weekPerFiveHourWindow(
     const w = riseOver(s.points, now, WEEK_PER_WINDOW_SPAN_MS)
     const f = riseOver(five, now, WEEK_PER_WINDOW_SPAN_MS)
     if (w === null || f === null) continue
-    weekRise += w.rise
-    fiveRise += f.rise
+    const start = Math.max(w.first, f.first)
+    const end = Math.min(w.last, f.last)
+    const sharedW = riseOver(s.points, end, end - start)
+    const sharedF = riseOver(five, end, end - start)
+    if (sharedW === null || sharedF === null) continue
+    weekRise += sharedW.rise
+    fiveRise += sharedF.rise
   }
   if (fiveRise < MIN_WINDOWS_MEASURED || weekRise <= 0) return null
   return weekRise / fiveRise

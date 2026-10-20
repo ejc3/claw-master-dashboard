@@ -12,6 +12,7 @@ import {
   poolRates,
   WEEKLY_SMOOTHING_MS,
 } from '../src/core/index'
+import { readingsQuery } from '../src/react/queries'
 
 // The pool's own history, 2026-10-09 to 10-20, with the subscriptions renamed: both windows' used
 // shares every 10 minutes (what the page reads), the snapshot at each start point (every 6 hours
@@ -34,16 +35,17 @@ const fixture: Fixture = JSON.parse(
   readFileSync(new URL('./support/backtest-2026-10.json', import.meta.url), 'utf8'),
 )
 
-const series = (kind: 'weekly' | 'five') =>
-  Object.entries(fixture.subscriptions).map(([key, s]) => ({
+/** What the page's readings query at t0 returns: its range, start inclusive, end exclusive. */
+function series(kind: 'weekly' | 'five', t0: EpochMs) {
+  const { start, end } = readingsQuery(t0).range
+  return Object.entries(fixture.subscriptions).map(([key, s]) => ({
     key,
-    points: s[kind].flatMap(
-      (v, i): Array<[EpochMs, number]> =>
-        v === null ? [] : [[fixture.startMs + i * fixture.stepMs, v]],
-    ),
+    points: s[kind].flatMap((v, i): Array<[EpochMs, number]> => {
+      const t = fixture.startMs + i * fixture.stepMs
+      return v === null || t < start || t >= end ? [] : [[t, v]]
+    }),
   }))
-const weekly = series('weekly')
-const five = series('five')
+}
 
 /** Hours without a subscription to take work in the day after t0, as the forecast has it. */
 function downInDay(g: PoolGaps, t0: EpochMs): number {
@@ -61,10 +63,14 @@ function downInDay(g: PoolGaps, t0: EpochMs): number {
  */
 function forecastAt(point: Fixture['points'][number], pooled: boolean): number {
   const { t0, asOf } = point
-  const smoothed = new Map(weekly.map((s) => [s.key, burnRate(s.points, t0, WEEKLY_SMOOTHING_MS)]))
+  // As the page: the readings its query returns, measured at the query's end.
+  const weekly = series('weekly', t0)
+  const five = series('five', t0)
+  const end = readingsQuery(t0).range.end
+  const smoothed = new Map(weekly.map((s) => [s.key, burnRate(s.points, end, WEEKLY_SMOOTHING_MS)]))
   const profiles = forecastProfiles(point.profiles, t0)
   const measured = poolGaps(profiles, asOf, smoothed, t0).pace
-  const pace = pooled ? poolPace(measured, poolRates(weekly, five, t0)) : measured
+  const pace = pooled ? poolPace(measured, poolRates(weekly, five, end)) : measured
   return downInDay(poolGaps(profiles, Math.max(asOf, t0), smoothed, t0, false, pace), t0)
 }
 
@@ -97,14 +103,14 @@ describe('the forecast against the pool’s own October history', () => {
   })
 
   it('forecasts the next day’s downtime within about an hour, with few false alarms', () => {
-    // Measured when the model was chosen: 0.82 hours off on average, 4 of 5 outages, 1 false alarm.
+    // Measured when the model was chosen: 0.83 hours off on average, 4 of 5 outages, 1 false alarm.
     const s = score(true)
     expect(s.mae).toBeLessThan(1.5)
     expect(s.caught).toBeGreaterThanOrEqual(4)
     expect(s.falseAlarms).toBeLessThanOrEqual(2)
   })
 
-  it('beats the pace measured per subscription and per window (1.30 hours off, 3 false alarms)', () => {
+  it('beats the pace measured per subscription and per window (1.31 hours off, 3 false alarms)', () => {
     const pool = score(true)
     const apart = score(false)
     expect(pool.mae).toBeLessThan(apart.mae - 0.3)
