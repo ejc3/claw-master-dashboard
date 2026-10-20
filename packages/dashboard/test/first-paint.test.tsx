@@ -1016,6 +1016,11 @@ describe("a subscription's detail", () => {
     expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
       'team-bravo · Nearly out · Anthropic still takes its work',
     )
+    // Its week is used up, so its 5-hour window can take nothing: no 5-hour line.
+    expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
+      'Weekly 100% used',
+    )
+    expect(container.querySelector('.cmd-account-detail')?.textContent).not.toContain('5-hour')
     // A tap anywhere else closes it.
     act(() => {
       document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
@@ -1099,7 +1104,9 @@ describe('the banner', () => {
     // With no more use, every week is whole again by its reset: 200% for two subscriptions.
     expect(slider.getAttribute('aria-valuetext')).toMatch(/total 200%$/)
     // The toggle covers the 5-hour chart and says what it shows.
-    expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain('If usage stops')
+    expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain(
+      'With no more use, as limits reset',
+    )
     const five = [...container.querySelectorAll('.cmd-capacity [role="slider"]')].at(
       -1,
     ) as HTMLElement
