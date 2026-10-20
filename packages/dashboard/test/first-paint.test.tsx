@@ -1477,9 +1477,10 @@ describe('the capacity advice', () => {
       await vi.advanceTimersByTimeAsync(0)
     })
     const facts = [...container.querySelectorAll('.cmd-facts li')].map((e) => e.textContent ?? '')
-    // At the demo's pace the pool covers 89% of the week: one more subscription, by a clock time
-    // (in the browser's zone once it has taken over; adviceLine's tests check the times).
-    const plan = /^Add 1 subscription by .+ to have tokens 95% of the week \(89% now\)$/
+    // At the demo's pace (the 5-hour one following from the weekly) the pool covers 94% of the
+    // week: one more subscription, by a clock time (in the browser's zone once it has taken over;
+    // adviceLine's tests check the times).
+    const plan = /^Add 1 subscription by .+ to have tokens 95% of the week \(94% now\)$/
     expect(facts.some((f) => plan.test(f))).toBe(true)
   })
 })

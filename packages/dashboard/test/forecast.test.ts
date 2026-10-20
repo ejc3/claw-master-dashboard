@@ -8,9 +8,13 @@ import {
   HOUR_MS,
   type PoolForecast,
   type ProfileStatus,
+  poolBurnRate,
   poolForecast,
+  poolPace,
+  poolRates,
   type QuotaWindow,
   WEEK_MS,
+  weekPerFiveHourWindow,
 } from '../src/core/index'
 import { lastReady } from '../src/react/hooks'
 
@@ -64,6 +68,96 @@ describe('burnRate', () => {
     expect(burnRate(points, NOW, 24 * HOUR_MS)).toBeCloseTo(0.05, 9)
     expect(burnRate([[NOW, 0.6]], NOW, 24 * HOUR_MS)).toBeNull()
     expect(burnRate([], NOW, 24 * HOUR_MS)).toBeNull()
+  })
+})
+
+/** Readings every 10 minutes over the `hours` to NOW, rising `perHour`; reset every `every` hours. */
+function rising(
+  key: string,
+  hours: number,
+  perHour: number,
+  every: number | null = null,
+): { key: string; points: Array<[number, number]> } {
+  const points: Array<[number, number]> = []
+  for (let m = 0; m <= hours * 60; m += 10) {
+    const h = m / 60
+    const into = every === null ? h : h % every
+    points.push([NOW - (hours - h) * HOUR_MS, Math.min(1, into * perHour)])
+  }
+  return { key, points }
+}
+
+describe('poolBurnRate', () => {
+  it("is the pool's rise over the longest coverage, not the sum of each one's rate", () => {
+    // One has risen 0.02 an hour all day; one joined two hours ago and took 0.02 an hour since:
+    // the pool's work moved, it did not double. Each one's own rate sums to 0.04.
+    const old = rising('a', 24, 0.02)
+    const fresh = rising('b', 2, 0.02)
+    expect(poolBurnRate([old, fresh], NOW, 24 * HOUR_MS)).toBeCloseTo((0.48 + 0.04) / 24, 9)
+    const apart = [old, fresh].reduce(
+      (sum, s) => sum + (burnRate(s.points, NOW, 24 * HOUR_MS) ?? 0),
+      0,
+    )
+    expect(apart).toBeCloseTo(0.04, 9)
+  })
+
+  it('is null without an hour of readings', () => {
+    expect(poolBurnRate([], NOW, 24 * HOUR_MS)).toBeNull()
+    expect(poolBurnRate([{ key: 'a', points: [[NOW, 0.5]] }], NOW, 24 * HOUR_MS)).toBeNull()
+  })
+})
+
+// Over 48 hours the week rises 0.01 an hour (0.48), while each 5-hour window fills in 4 hours and
+// resets an hour later: nine full windows and three hours of the tenth (9.75).
+const weeklyA = rising('a', 48, 0.01)
+const fiveA = rising('a', 48, 0.25, 5)
+
+describe('weekPerFiveHourWindow', () => {
+  it('divides the weekly rise by the 5-hour rise, resets counted as new use', () => {
+    expect(weekPerFiveHourWindow([weeklyA], [fiveA], NOW)).toBeCloseTo(0.48 / 9.75, 9)
+  })
+
+  it('counts only subscriptions read in both windows', () => {
+    // b's week rose too, but with no 5-hour readings it says nothing about the cost.
+    const r = weekPerFiveHourWindow([weeklyA, rising('b', 48, 0.02)], [fiveA], NOW)
+    expect(r).toBeCloseTo(weekPerFiveHourWindow([weeklyA], [fiveA], NOW) as number, 9)
+  })
+
+  it('is null with less than half a window of 5-hour use', () => {
+    expect(
+      weekPerFiveHourWindow([rising('a', 48, 0.001)], [rising('a', 48, 0.005)], NOW),
+    ).toBeNull()
+    expect(weekPerFiveHourWindow([], [], NOW)).toBeNull()
+  })
+})
+
+describe('poolPace', () => {
+  const measured = { weekly: 0.09, fiveHour: 0.4 }
+
+  it("takes the pool's weekly rate and the 5-hour pace that same work makes", () => {
+    expect(poolPace(measured, { weekly: 0.06, weekPerWindow: 0.25 })).toEqual({
+      weekly: 0.06,
+      fiveHour: 0.24,
+    })
+  })
+
+  it('keeps what the subscriptions measure where the readings cannot tell', () => {
+    expect(poolPace(measured, { weekly: null, weekPerWindow: null })).toEqual(measured)
+    expect(poolPace(measured, { weekly: 0.06, weekPerWindow: null })).toEqual({
+      weekly: 0.06,
+      fiveHour: 0.4,
+    })
+    // No pool rate: the 5-hour pace follows the subscriptions' weekly one.
+    expect(poolPace(measured, { weekly: null, weekPerWindow: 0.3 }).fiveHour).toBeCloseTo(0.3, 9)
+  })
+
+  it('reads both from the same readings in poolRates', () => {
+    const rates = poolRates([weeklyA], [fiveA], NOW)
+    expect(rates.weekly).toBeCloseTo(0.01, 9)
+    expect(rates.weekPerWindow).toBeCloseTo(
+      weekPerFiveHourWindow([weeklyA], [fiveA], NOW) as number,
+      9,
+    )
   })
 })
 

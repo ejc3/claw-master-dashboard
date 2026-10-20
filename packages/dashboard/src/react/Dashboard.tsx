@@ -16,6 +16,8 @@ import {
   hasHeadroom,
   type ProfileStatus,
   poolGaps,
+  poolPace,
+  poolRates,
   type Series,
   type SeriesQuery,
   type Snapshot,
@@ -299,8 +301,10 @@ function DashboardBody(props: DashboardProps) {
     return [{ key: 'error-rate', label: 'Error rate', color: 'var(--cmd-series-1)', points }]
   }, [rateAnswers])
 
-  // The weekly burn rate is smoothed over the last day of used-share readings; the 5-hour one is
-  // each window's average so far (no history of it is exported yet).
+  // The pace is the pool's: its weekly use over the last day of readings, and the 5-hour pace that
+  // same work makes, at what a full 5-hour window costs of the week (poolRates, poolPace). Where the
+  // readings cannot tell, each subscription's smoothed weekly rate and each 5-hour window's average
+  // so far, as poolGaps measures them.
   const usedQuery = readingsQuery(now)
   const smoothingRange = usedQuery.range
   const usedReadings = useReadings(apiBase, usedQuery)
@@ -313,6 +317,11 @@ function DashboardBody(props: DashboardProps) {
     }
     return rates
   }, [usedData, smoothingRange.end])
+  const fiveData = useLastReady(useReadings(apiBase, readingsQuery(now, 'fiveHourUsed')))
+  const rates = useMemo(
+    () => poolRates(usedData ?? [], fiveData ?? [], smoothingRange.end),
+    [usedData, fiveData, smoothingRange.end],
+  )
   const profilesNow = snapshot?.profiles ?? null
   // When no subscription can take work, from both windows at once: the headline.
   // Once a minute, not every second: the simulation steps through a week. Also the moment a
@@ -333,8 +342,11 @@ function DashboardBody(props: DashboardProps) {
   // The pace, though, is measured at the readings: a 5-hour window that has reset since has no
   // pace of its own left to measure from now.
   const pace = useMemo(
-    () => (forecastable === null ? null : poolGaps(forecastable, asOf, smoothed, gapsAt).pace),
-    [forecastable, asOf, smoothed, gapsAt],
+    () =>
+      forecastable === null
+        ? null
+        : poolPace(poolGaps(forecastable, asOf, smoothed, gapsAt).pace, rates),
+    [forecastable, asOf, smoothed, gapsAt, rates],
   )
   const gaps = useMemo(
     () =>
@@ -362,11 +374,11 @@ function DashboardBody(props: DashboardProps) {
       const at = Math.max(asOf, clock.current)
       const profiles = forecastProfiles(profilesNow, at)
       // The pace at the readings, the forecast from the clock (as the headline's).
-      const measured = poolGaps(profiles, asOf, smoothed, at).pace
+      const measured = poolPace(poolGaps(profiles, asOf, smoothed, at).pace, rates)
       setAdvice(capacityAdvice(profiles, at, smoothed, at, measured))
     }, 0)
     return () => clearTimeout(timer)
-  }, [profilesNow, asOf, smoothed])
+  }, [profilesNow, asOf, smoothed, rates])
   const ready = (profilesNow ?? []).filter((p) => hasHeadroom(p, now)).length
   const outlookDetail =
     profilesNow === null

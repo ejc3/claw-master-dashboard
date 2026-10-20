@@ -41,6 +41,19 @@ export function burnRate(
   now: EpochMs,
   spanMs: number,
 ): number | null {
+  const r = riseOver(points, now, spanMs)
+  return r === null ? null : (r.rise / r.coveredMs) * HOUR_MS
+}
+
+/**
+ * How much a used share rose over the span ending at `now`, counting a reset's fall as the start of
+ * new use (as burnRate); null without readings covering MIN_SMOOTHING_COVERAGE_MS of it.
+ */
+export function riseOver(
+  points: Array<[EpochMs, number]>,
+  now: EpochMs,
+  spanMs: number,
+): { rise: number; coveredMs: number } | null {
   const byTime = new Map<EpochMs, number>()
   for (const [t, v] of points) {
     if (!Number.isFinite(t) || !Number.isFinite(v) || t < now - spanMs || t > now) continue
@@ -63,7 +76,93 @@ export function burnRate(
       peak = v
     }
   }
-  return (rise / covered) * HOUR_MS
+  return { rise, coveredMs: covered }
+}
+
+/** The span over which what a full 5-hour window costs of the week is measured. */
+export const WEEK_PER_WINDOW_SPAN_MS = 48 * HOUR_MS
+
+/** Below this many full 5-hour windows of use in the span, the cost is not measured. */
+const MIN_WINDOWS_MEASURED = 0.5
+
+type Readings = ReadonlyArray<{ key: string; points: Array<[EpochMs, number]> }>
+
+/**
+ * The pool's weekly burn rate, in one subscription's allowance per hour: every subscription's rise
+ * over the span, over the longest time any of them covers. Not the sum of each one's own rate: one
+ * that joined an hour ago took work the others would have, and its rise over that hour alone would
+ * count the pool's demand twice. Null without readings covering MIN_SMOOTHING_COVERAGE_MS.
+ */
+export function poolBurnRate(weekly: Readings, now: EpochMs, spanMs: number): number | null {
+  let rise = 0
+  let covered = 0
+  for (const s of weekly) {
+    const r = riseOver(s.points, now, spanMs)
+    if (r === null) continue
+    rise += r.rise
+    covered = Math.max(covered, r.coveredMs)
+  }
+  return covered === 0 ? null : (rise / covered) * HOUR_MS
+}
+
+/**
+ * What a full 5-hour window costs of the week, from the pool's own readings: the weekly rise over
+ * the 5-hour rise, summed over the subscriptions read in both, over the last
+ * WEEK_PER_WINDOW_SPAN_MS. The same work spends both windows, so this ties the two paces together
+ * (0.25 to 0.29 from 2026-10-12 to 10-19). Null with too little 5-hour use to tell.
+ */
+export function weekPerFiveHourWindow(
+  weekly: Readings,
+  fiveHour: Readings,
+  now: EpochMs,
+): number | null {
+  const fiveByKey = new Map(fiveHour.map((s) => [s.key, s.points]))
+  let weekRise = 0
+  let fiveRise = 0
+  for (const s of weekly) {
+    const five = fiveByKey.get(s.key)
+    if (five === undefined) continue
+    const w = riseOver(s.points, now, WEEK_PER_WINDOW_SPAN_MS)
+    const f = riseOver(five, now, WEEK_PER_WINDOW_SPAN_MS)
+    if (w === null || f === null) continue
+    weekRise += w.rise
+    fiveRise += f.rise
+  }
+  if (fiveRise < MIN_WINDOWS_MEASURED || weekRise <= 0) return null
+  return weekRise / fiveRise
+}
+
+/** The pool's demand as measured from both windows' readings; null where they cannot tell. */
+export interface PoolRates {
+  /** poolBurnRate over WEEKLY_SMOOTHING_MS. */
+  weekly: number | null
+  /** weekPerFiveHourWindow. */
+  weekPerWindow: number | null
+}
+
+export function poolRates(weekly: Readings, fiveHour: Readings, now: EpochMs): PoolRates {
+  return {
+    weekly: poolBurnRate(weekly, now, WEEKLY_SMOOTHING_MS),
+    weekPerWindow: weekPerFiveHourWindow(weekly, fiveHour, now),
+  }
+}
+
+/**
+ * The pool's pace as one demand: the weekly pace is the pool's use over the last day (current use
+ * leads the projection), and the 5-hour pace is what that same work makes of a 5-hour window,
+ * through what a full one costs of the week. Where the readings cannot tell, the pace measured
+ * from the subscriptions (`measured`, poolGaps' own) stays.
+ */
+export function poolPace(
+  measured: { weekly: number; fiveHour: number },
+  rates: PoolRates,
+): { weekly: number; fiveHour: number } {
+  const weekly =
+    rates.weekly !== null && Number.isFinite(rates.weekly) ? rates.weekly : measured.weekly
+  const ratio = rates.weekPerWindow
+  const fiveHour =
+    ratio !== null && ratio > 0 && Number.isFinite(ratio) ? weekly / ratio : measured.fiveHour
+  return { weekly, fiveHour }
 }
 
 /**
