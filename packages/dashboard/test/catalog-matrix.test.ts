@@ -26,6 +26,7 @@ const EMITTED: Record<string, readonly Dimension[]> = {
   'claw_master.proxy.overhead': ['profile'],
   'claw_master.quota.used_fraction': ['profile'],
   'claw_master.quota.resets_in_seconds': ['profile'],
+  'claw_master.quota.five_hour.used_fraction': ['profile'],
   'claw_master.auth.token_expires_in_seconds': ['profile'],
   // tokens.go (CLIProxyAPI#14): one projection per axis, each with the token type.
   'claw_master.inference.tokens': ['profile', 'type'],
@@ -44,6 +45,7 @@ const METRICS: SemanticMetric[] = [
   'upstreamTtfbMs',
   'overheadMs',
   'weeklyUsed',
+  'fiveHourUsed',
   'weeklyResetsInSeconds',
   'tokenExpiresInSeconds',
   'tokens',

@@ -9,6 +9,7 @@ import {
   TOKEN_CHOICES,
   TOKEN_TYPES,
   type TokenType,
+  WEEK_PER_WINDOW_SPAN_MS,
   WEEKLY_SMOOTHING_MS,
 } from '../core'
 
@@ -157,12 +158,23 @@ export function breakdownQueries(
   }
 }
 
-/** The last day of used-share readings per subscription, for the smoothed weekly burn rate. */
-export function readingsQuery(now: EpochMs): SeriesQuery {
+/**
+ * Used-share readings per subscription: the weekly ones for the smoothed weekly burn rate (its last
+ * WEEKLY_SMOOTHING_MS), and both windows' over WEEK_PER_WINDOW_SPAN_MS for what a full 5-hour
+ * window costs of the week.
+ */
+export function readingsQuery(
+  now: EpochMs,
+  metric: 'weeklyUsed' | 'fiveHourUsed' = 'weeklyUsed',
+): SeriesQuery {
   return {
-    metric: 'weeklyUsed',
+    metric,
     groupBy: 'profile',
-    range: rangeEnding(now, WEEKLY_SMOOTHING_MS, READINGS_STEP_SECONDS),
+    range: rangeEnding(
+      now,
+      Math.max(WEEKLY_SMOOTHING_MS, WEEK_PER_WINDOW_SPAN_MS),
+      READINGS_STEP_SECONDS,
+    ),
     stepSeconds: READINGS_STEP_SECONDS,
   }
 }
@@ -198,6 +210,7 @@ export function firstQueries(now: EpochMs): SeriesQuery[] {
     kpiQuery(now, 'errors'),
     kpiTokensQuery(now),
     readingsQuery(now),
+    readingsQuery(now, 'fiveHourUsed'),
     ...(table === null
       ? []
       : [

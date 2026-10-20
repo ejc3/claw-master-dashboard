@@ -90,6 +90,7 @@ export type SemanticMetric =
   | 'upstreamTtfbMs'
   | 'overheadMs'
   | 'weeklyUsed'
+  | 'fiveHourUsed'
   | 'weeklyResetsInSeconds'
   | 'tokenExpiresInSeconds'
   | 'tokens'

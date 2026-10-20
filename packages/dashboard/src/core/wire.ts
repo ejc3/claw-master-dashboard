@@ -22,6 +22,7 @@ const METRICS: readonly SemanticMetric[] = [
   'upstreamTtfbMs',
   'overheadMs',
   'weeklyUsed',
+  'fiveHourUsed',
   'weeklyResetsInSeconds',
   'tokenExpiresInSeconds',
   'tokens',

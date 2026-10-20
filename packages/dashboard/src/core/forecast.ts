@@ -41,6 +41,21 @@ export function burnRate(
   now: EpochMs,
   spanMs: number,
 ): number | null {
+  const r = riseOver(points, now, spanMs)
+  return r === null ? null : (r.rise / r.coveredMs) * HOUR_MS
+}
+
+/**
+ * How much a used share rose over the span ending at `now`, counting a reset's fall as the start of
+ * new use (as burnRate), and the time from its first reading there to its last; null without
+ * readings covering `minCoveredMs` of it.
+ */
+export function riseOver(
+  points: Array<[EpochMs, number]>,
+  now: EpochMs,
+  spanMs: number,
+  minCoveredMs: number = MIN_SMOOTHING_COVERAGE_MS,
+): { rise: number; coveredMs: number; first: EpochMs; last: EpochMs } | null {
   const byTime = new Map<EpochMs, number>()
   for (const [t, v] of points) {
     if (!Number.isFinite(t) || !Number.isFinite(v) || t < now - spanMs || t > now) continue
@@ -51,7 +66,7 @@ export function burnRate(
   const last = readings[readings.length - 1]
   if (first === undefined || last === undefined) return null
   const covered = last[0] - first[0]
-  if (covered < MIN_SMOOTHING_COVERAGE_MS) return null
+  if (covered < minCoveredMs) return null
   let rise = 0
   let peak = first[1]
   for (const [, v] of readings.slice(1)) {
@@ -63,7 +78,122 @@ export function burnRate(
       peak = v
     }
   }
-  return (rise / covered) * HOUR_MS
+  return { rise, coveredMs: covered, first: first[0], last: last[0] }
+}
+
+/** The span over which what a full 5-hour window costs of the week is measured. */
+export const WEEK_PER_WINDOW_SPAN_MS = 48 * HOUR_MS
+
+/** Below this many full 5-hour windows of use in the span, the cost is not measured. */
+const MIN_WINDOWS_MEASURED = 0.5
+
+type Readings = ReadonlyArray<{ key: string; points: Array<[EpochMs, number]> }>
+
+/**
+ * The pool's weekly burn rate, in one subscription's allowance per hour: every subscription's rise
+ * over the span, over the longest time any of them covers. Not the sum of each one's own rate: one
+ * that joined an hour ago took work the others would have, and its rise over that hour alone would
+ * count the pool's demand twice. Every rise counts, however short its readings; the pool's must
+ * cover MIN_SMOOTHING_COVERAGE_MS, else null.
+ */
+export function poolBurnRate(weekly: Readings, now: EpochMs, spanMs: number): number | null {
+  let rise = 0
+  let covered = 0
+  for (const s of weekly) {
+    const r = riseOver(s.points, now, spanMs, 0)
+    if (r === null) continue
+    rise += r.rise
+    covered = Math.max(covered, r.coveredMs)
+  }
+  return covered < MIN_SMOOTHING_COVERAGE_MS ? null : (rise / covered) * HOUR_MS
+}
+
+/**
+ * What a full 5-hour window costs of the week, from the pool's own readings: the weekly rise over
+ * the 5-hour rise, summed over the subscriptions read in both, over the last
+ * WEEK_PER_WINDOW_SPAN_MS. Each subscription's two rises are taken over the same time, the part
+ * of the span both windows' readings cover, so a gap in one does not skew the cost. The same work spends both windows, so this ties the two paces together
+ * (0.25 to 0.29 from 2026-10-12 to 10-19). Null with too little 5-hour use to tell.
+ */
+export function weekPerFiveHourWindow(
+  weekly: Readings,
+  fiveHour: Readings,
+  now: EpochMs,
+): number | null {
+  const fiveByKey = new Map(fiveHour.map((s) => [s.key, s.points]))
+  let weekRise = 0
+  let fiveRise = 0
+  for (const s of weekly) {
+    const five = fiveByKey.get(s.key)
+    if (five === undefined) continue
+    const shared = sharedRises(s.points, five, now, WEEK_PER_WINDOW_SPAN_MS)
+    if (shared === null) continue
+    weekRise += shared[0]
+    fiveRise += shared[1]
+  }
+  if (fiveRise < MIN_WINDOWS_MEASURED || weekRise <= 0) return null
+  return weekRise / fiveRise
+}
+
+/**
+ * Two series' rises over the same time: from the later of their first readings in the span to the
+ * earlier of their last, narrowed until both have a reading at each end (a missing bucket in one
+ * would otherwise leave it measured over less time). Null when they share under an hour.
+ */
+function sharedRises(
+  a: Array<[EpochMs, number]>,
+  b: Array<[EpochMs, number]>,
+  now: EpochMs,
+  spanMs: number,
+): [number, number] | null {
+  let start = now - spanMs
+  let end = now
+  for (;;) {
+    const ra = riseOver(a, end, end - start)
+    const rb = riseOver(b, end, end - start)
+    if (ra === null || rb === null) return null
+    const first = Math.max(ra.first, rb.first)
+    const last = Math.min(ra.last, rb.last)
+    if (first === ra.first && first === rb.first && last === ra.last && last === rb.last) {
+      return [ra.rise, rb.rise]
+    }
+    // Each pass moves an end to a reading inside the last bounds, so this ends.
+    start = first
+    end = last
+  }
+}
+
+/** The pool's demand as measured from both windows' readings; null where they cannot tell. */
+export interface PoolRates {
+  /** poolBurnRate over WEEKLY_SMOOTHING_MS. */
+  weekly: number | null
+  /** weekPerFiveHourWindow. */
+  weekPerWindow: number | null
+}
+
+export function poolRates(weekly: Readings, fiveHour: Readings, now: EpochMs): PoolRates {
+  return {
+    weekly: poolBurnRate(weekly, now, WEEKLY_SMOOTHING_MS),
+    weekPerWindow: weekPerFiveHourWindow(weekly, fiveHour, now),
+  }
+}
+
+/**
+ * The pool's pace as one demand: the weekly pace is the pool's use over the last day (current use
+ * leads the projection), and the 5-hour pace is what that same work makes of a 5-hour window,
+ * through what a full one costs of the week. Where the readings cannot tell, the pace measured
+ * from the subscriptions (`measured`, poolGaps' own) stays.
+ */
+export function poolPace(
+  measured: { weekly: number; fiveHour: number },
+  rates: PoolRates,
+): { weekly: number; fiveHour: number } {
+  const weekly =
+    rates.weekly !== null && Number.isFinite(rates.weekly) ? rates.weekly : measured.weekly
+  const ratio = rates.weekPerWindow
+  const fiveHour =
+    ratio !== null && ratio > 0 && Number.isFinite(ratio) ? weekly / ratio : measured.fiveHour
+  return { weekly, fiveHour }
 }
 
 /**

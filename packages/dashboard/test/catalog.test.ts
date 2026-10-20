@@ -63,6 +63,11 @@ const GOLDEN: Array<[SemanticMetric, Dimension | undefined, string]> = [
     'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
   ],
   [
+    'fiveHourUsed',
+    'profile',
+    'SELECT MAX("claw_master.quota.five_hour.used_fraction") FROM "ClawMaster" GROUP BY profile',
+  ],
+  [
     'weeklyResetsInSeconds',
     'profile',
     'SELECT MAX("claw_master.quota.resets_in_seconds") FROM "ClawMaster" GROUP BY profile',

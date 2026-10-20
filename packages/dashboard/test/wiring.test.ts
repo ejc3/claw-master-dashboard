@@ -33,6 +33,15 @@ describe('Headline wiring', () => {
     expect(source).toMatch(/const forecastFrom = Math\.max\(asOf, gapsAt\)/)
     // The pace measured at the readings, the forecast run from the clock.
     expect(source).toMatch(/poolGaps\(forecastable, asOf, smoothed, gapsAt\)\.pace/)
+    // At the pool's pace, from both windows' readings: the forecast and the advice alike.
+    expect(source).toMatch(
+      /poolRates\(usedData \?\? \[\], fiveData \?\? \[\], smoothingRange\.end\)/,
+    )
+    expect(source).toMatch(/useReadings\(apiBase, readingsQuery\(now, 'fiveHourUsed'\)\)/)
+    expect(source).toMatch(
+      /poolPace\(poolGaps\(forecastable, asOf, smoothed, gapsAt\)\.pace, rates\)/,
+    )
+    expect(source).toMatch(/poolPace\(poolGaps\(profiles, asOf, smoothed, at\)\.pace, rates\)/)
     expect(source).toMatch(/poolGaps\(forecastable, forecastFrom, smoothed, gapsAt, false, pace\)/)
     expect(source).toMatch(
       /<PoolOutlook\s+gaps=\{gaps\}\s+gapsIfStopped=\{gapsIfStopped\}\s+profiles=\{profilesNow\}/,

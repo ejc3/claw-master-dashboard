@@ -195,6 +195,23 @@ function usedAt(
 
 const mod = (a: number, n: number) => ((a % n) + n) % n
 
+/** What a full 5-hour window costs of the week in the demo, as measured in the pool (about 0.27). */
+const DEMO_WEEK_PER_WINDOW = 0.27
+
+/**
+ * A 5-hour window's used share at `t`: the current window as usedAt, and each earlier one rising
+ * from its start at the subscription's weekly pace, through DEMO_WEEK_PER_WINDOW, so both windows'
+ * readings tell the same story.
+ */
+function fiveHourUsedAt(p: DemoProfile, now: EpochMs, t: EpochMs): number {
+  if (p.fiveHourUsed === null) return Number.NaN
+  const resetAt = now + p.fiveHourResetsInMs
+  if (t >= resetAt - FIVE_HOURS_MS) return usedAt(p.fiveHourUsed, resetAt, FIVE_HOURS_MS, now, t)
+  const weekElapsed = Math.max(HOUR_MS, WEEK_MS - p.weeklyResetsInMs)
+  const perMs = p.weeklyUsed / weekElapsed / DEMO_WEEK_PER_WINDOW
+  return Math.min(1, perMs * mod(t - (resetAt - FIVE_HOURS_MS), FIVE_HOURS_MS))
+}
+
 export interface DemoOptions {
   /** The clock; tests pass a fixed one so every number is reproducible. */
   now?: () => EpochMs
@@ -250,6 +267,14 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
           const scale = groupBy === 'profile' ? (PROFILES[i]?.latencyScale ?? 1) : 1
           return base * scale * (0.85 + 0.3 * noise(metric, key, m))
         })
+      }
+      case 'fiveHourUsed': {
+        const values = PROFILES.map((p) =>
+          p.joinedAgoMs !== undefined && m < now - p.joinedAgoMs
+            ? Number.NaN
+            : fiveHourUsedAt(p, now, m),
+        )
+        return groupBy !== undefined ? values : [reduce('MAX', values)]
       }
       case 'weeklyUsed':
       case 'weeklyResetsInSeconds':

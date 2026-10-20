@@ -77,6 +77,13 @@ const CATALOG: Record<SemanticMetric, Entry> = {
     statistic: 'MAX',
     dimensions: ['profile'],
   },
+  // The usage poll's 5-hour window, as the weekly one: with both, what a full window costs of the
+  // week can be measured (weekPerFiveHourWindow).
+  fiveHourUsed: {
+    name: 'claw_master.quota.five_hour.used_fraction',
+    statistic: 'MAX',
+    dimensions: ['profile'],
+  },
   weeklyResetsInSeconds: {
     name: 'claw_master.quota.resets_in_seconds',
     statistic: 'MAX',
