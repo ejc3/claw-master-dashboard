@@ -73,6 +73,7 @@ export {
   POLL_FULL_LEFT,
   pollSaysUsedUp,
   type RunOut,
+  weekUsedUp,
 } from './headline'
 export {
   EVEN_MARGIN,

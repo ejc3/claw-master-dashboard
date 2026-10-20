@@ -19,6 +19,7 @@ import {
   pollSaysUsedUp,
   TRACE_STEP_MS,
   type WindowKind,
+  weekUsedUp,
 } from '../core'
 import { useWhen } from './hooks'
 import { LineChart, seriesColors } from './LineChart'
@@ -318,13 +319,16 @@ export function PoolAccounts(props: {
                 </li>
               )
             })()}
-            <WindowDetail
-              name="5-hour"
-              who={shown.profile}
-              window={fiveHourAt(shown.fiveHour, props.now)}
-              closed={shown.fiveHour?.resetsAt != null && shown.fiveHour.resetsAt <= props.now}
-              now={props.now}
-            />
+            {/* Nothing of a 5-hour window can be used while the week is used up. */}
+            {!weekUsedUp(shown, props.now) && (
+              <WindowDetail
+                name="5-hour"
+                who={shown.profile}
+                window={fiveHourAt(shown.fiveHour, props.now)}
+                closed={shown.fiveHour?.resetsAt != null && shown.fiveHour.resetsAt <= props.now}
+                now={props.now}
+              />
+            )}
           </ul>
         </div>
       )}
@@ -476,8 +480,8 @@ export function CapacityOutlook(props: {
       <div className="cmd-capacity-weekly">{chart('weekly', 'Weekly limit left', 180)}</div>
       {chart('fiveHour', '5-hour limit left, next 5h', 160)}
       <p className="cmd-capacity-note">
-        {weeklyView === 'stopped' ? 'If usage stops' : 'At the current pace'} · 100% per
-        subscription · shaded: none available
+        {weeklyView === 'stopped' ? 'With no more use, as limits reset' : 'At the current pace'} ·
+        each subscription counts 100% · shaded: none can take work
       </p>
     </div>
   )

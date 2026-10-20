@@ -14,6 +14,14 @@ function readFull(window: QuotaWindow | null, now: EpochMs): boolean {
 }
 
 /**
+ * Whether a subscription's week is read as used up until its reset: nothing of a 5-hour window
+ * can be used then, so the 5-hour reading says nothing.
+ */
+export function weekUsedUp(profile: ProfileStatus, now: EpochMs): boolean {
+  return readFull(profile.weekly, now)
+}
+
+/**
  * A 5-hour window as of `at`: as read while its reset is ahead (or unknown); once the reset has
  * passed, no window is open (nothing used, no reset time) until the next request opens one.
  */
