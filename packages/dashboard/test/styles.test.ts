@@ -122,6 +122,8 @@ describe('the subscription detail', () => {
     // The header rounds its own tinted corners: the top two, or all four when nothing follows it.
     expect(all.find(([s]) => s === '.cmd-pool-head')?.[1]).toMatch(/border-radius:/)
     expect(all.find(([s]) => s === '.cmd-pool-head:last-child')?.[1]).toMatch(/border-radius:/)
+    // Nor does the charts' square bottom line run past the panel's rounded corners.
+    expect(all.find(([s]) => s === '.cmd-capacity:last-child')?.[1]).toMatch(/border-bottom:\s*0/)
   })
 })
 
