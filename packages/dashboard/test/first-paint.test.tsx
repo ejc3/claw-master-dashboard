@@ -1027,6 +1027,49 @@ describe("a subscription's detail", () => {
     })
     expect(container.querySelector('.cmd-account-detail')).toBeNull()
   })
+
+  it('follows a mouse: opens as it passes over a subscription and closes when it leaves them', () => {
+    // On a wide screen the detail floats over the charts, so a mouse that has moved on must not leave it there.
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() =>
+      root.render(<PoolAccounts profiles={[sub('team-alpha'), sub('team-bravo')]} now={NOW} />),
+    )
+    const accounts = container.querySelector('.cmd-accounts') as HTMLElement
+    const [alpha] = [...container.querySelectorAll<HTMLButtonElement>('.cmd-account button')]
+    if (alpha === undefined) throw new Error('no buttons')
+    const pointer = (
+      target: Element,
+      type: string,
+      pointerType: string,
+      relatedTarget: Element,
+    ) => {
+      const event = new MouseEvent(type, { bubbles: true, relatedTarget })
+      Object.defineProperty(event, 'pointerType', { value: pointerType })
+      act(() => {
+        target.dispatchEvent(event)
+      })
+    }
+    // React reads entering from a pointerover from outside, and leaving from a pointerout to outside.
+    pointer(alpha, 'pointerover', 'mouse', document.body)
+    expect(container.querySelector('.cmd-account-detail')?.textContent).toContain('team-alpha')
+    pointer(accounts, 'pointerout', 'mouse', document.body)
+    expect(container.querySelector('.cmd-account-detail')).toBeNull()
+    // A finger's detail stays until a tap away: a touch ends in a pointerout too.
+    act(() => alpha.click())
+    pointer(accounts, 'pointerout', 'touch', document.body)
+    expect(container.querySelector('.cmd-account-detail')?.textContent).toContain('team-alpha')
+    // With focus in the detail (a calendar link reached from the keyboard), a mouse moving away
+    // leaves it and the focus where they are.
+    const link = container.querySelector<HTMLAnchorElement>('.cmd-account-detail a')
+    if (link === null) throw new Error('no calendar link')
+    act(() => link.focus())
+    pointer(accounts, 'pointerout', 'mouse', document.body)
+    expect(container.querySelector('.cmd-account-detail')).not.toBeNull()
+    expect(document.activeElement).toBe(link)
+  })
 })
 
 describe('calendarHref', () => {

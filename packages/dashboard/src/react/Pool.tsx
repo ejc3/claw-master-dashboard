@@ -224,7 +224,8 @@ function availability(p: ProfileStatus, now: EpochMs): string {
 /**
  * Each subscription's weekly and 5-hour use, as two tiny bars, and whether it can take work.
  * Hovering (with a mouse) or tapping one shows its detail below the row: when each limit resets,
- * with a link to put that in a calendar. A tap anywhere else, or Escape, closes it.
+ * with a link to put that in a calendar. A mouse leaving the subscriptions, a tap anywhere else, or
+ * Escape closes it.
  */
 export function PoolAccounts(props: {
   profiles: ProfileStatus[]
@@ -259,7 +260,17 @@ export function PoolAccounts(props: {
   if (props.profiles.length === 0) return null
   const shown = props.profiles.find((p) => p.profile === open) ?? null
   return (
-    <div className="cmd-accounts" ref={ref}>
+    <div
+      className="cmd-accounts"
+      ref={ref}
+      // A mouse's detail follows it: on a wide screen it floats over the charts, so it goes with the mouse,
+      // unless focus is in it (a calendar link reached from the keyboard stays where it is).
+      onPointerLeave={(event) => {
+        if (event.pointerType !== 'mouse') return
+        if (document.getElementById('cmd-account-detail')?.contains(document.activeElement)) return
+        setOpen(null)
+      }}
+    >
       <ul aria-label="What each subscription has left of its weekly and 5-hour limits">
         {props.profiles.map((p) => {
           const weekly = share(p.weekly.usedFraction)
