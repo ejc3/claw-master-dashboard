@@ -101,6 +101,18 @@ describe('dashboard.css', () => {
   })
 })
 
+describe('the subscription detail', () => {
+  it('floats over the charts on a wide screen, so hovering a subscription moves nothing', () => {
+    // In the flow it grew the vertically centered block: the row moved 14px under the pointer and the
+    // charts below moved down on every hover.
+    const wide = rules(block('  @media (min-width: 720px) {\n    .cmd-pool-head'))
+    const body = (selector: string) => wide.find(([s]) => s === selector)?.[1] ?? ''
+    expect(body('.cmd-accounts')).toMatch(/position:\s*relative/)
+    expect(body('.cmd-account-detail')).toMatch(/position:\s*absolute/)
+    expect(body('.cmd-account-detail')).toMatch(/top:\s*100%/)
+  })
+})
+
 describe('the sparkle', () => {
   it('is kept until its last star has faded', () => {
     const rules = css.slice(css.indexOf('.cmd-sparkle svg {'))

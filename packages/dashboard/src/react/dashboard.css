@@ -454,9 +454,23 @@
     }
 
     .cmd-accounts {
+      position: relative;
       grid-column: 3;
       grid-row: 1;
       align-self: center;
+    }
+
+    /* A mouse opens the detail by passing over a subscription. In the flow it would grow the
+       centered block, move the row under the pointer and push the charts down on every hover;
+       floating over the charts, it moves nothing. */
+    .cmd-account-detail {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      z-index: 3;
+      width: max-content;
+      max-width: min(360px, calc(100vw - 32px));
+      box-shadow: var(--cmd-shadow-pop);
     }
   }
 
