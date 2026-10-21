@@ -223,12 +223,13 @@
 
   /* The outlook: will the pool run out, and how much of it is used. A panel whose head is an
      alert tinted by the answer, then one forecast per window. */
+  /* Not overflow: hidden, which would cut off a subscription's detail floating below the header when
+     there are no charts under it; the header rounds its own tinted corners instead. */
   .cmd-pool {
     background: var(--cmd-surface);
     border: 1px solid var(--cmd-rule);
     border-radius: var(--cmd-radius);
     box-shadow: var(--cmd-shadow);
-    overflow: hidden;
   }
 
   .cmd-pool-head {
@@ -238,7 +239,11 @@
     align-items: start;
     padding: 14px 16px;
     border-bottom: 1px solid var(--cmd-info);
+    border-radius: calc(var(--cmd-radius) - 1px) calc(var(--cmd-radius) - 1px) 0 0;
     background: var(--cmd-info-soft);
+  }
+  .cmd-pool-head:last-child {
+    border-radius: calc(var(--cmd-radius) - 1px);
   }
 
   .cmd-alert-icon {
@@ -467,6 +472,8 @@
       position: absolute;
       top: 100%;
       right: 0;
+      /* No gap under the block: a mouse crossing one on its way to a link would close the detail. */
+      margin-top: 0;
       z-index: 3;
       width: max-content;
       max-width: min(360px, calc(100vw - 32px));

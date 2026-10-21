@@ -110,6 +110,18 @@ describe('the subscription detail', () => {
     expect(body('.cmd-accounts')).toMatch(/position:\s*relative/)
     expect(body('.cmd-account-detail')).toMatch(/position:\s*absolute/)
     expect(body('.cmd-account-detail')).toMatch(/top:\s*100%/)
+    // No gap below the block for a mouse to cross on its way to a calendar link (a gap closed it).
+    expect(body('.cmd-account-detail')).toMatch(/margin-top:\s*0/)
+  })
+
+  it('is not cut off by the pool panel when the header is all there is', () => {
+    // With every login expired there are no charts; overflow: hidden on the panel cut the detail off.
+    const all = rules(css)
+    const pool = all.find(([s]) => s === '.cmd-pool')?.[1] ?? ''
+    expect(pool).not.toMatch(/overflow:\s*(hidden|clip)/)
+    // The header rounds its own tinted corners: the top two, or all four when nothing follows it.
+    expect(all.find(([s]) => s === '.cmd-pool-head')?.[1]).toMatch(/border-radius:/)
+    expect(all.find(([s]) => s === '.cmd-pool-head:last-child')?.[1]).toMatch(/border-radius:/)
   })
 })
 

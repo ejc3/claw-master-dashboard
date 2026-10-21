@@ -1061,6 +1061,14 @@ describe("a subscription's detail", () => {
     act(() => alpha.click())
     pointer(accounts, 'pointerout', 'touch', document.body)
     expect(container.querySelector('.cmd-account-detail')?.textContent).toContain('team-alpha')
+    // With focus in the detail (a calendar link reached from the keyboard), a mouse moving away
+    // leaves it and the focus where they are.
+    const link = container.querySelector<HTMLAnchorElement>('.cmd-account-detail a')
+    if (link === null) throw new Error('no calendar link')
+    act(() => link.focus())
+    pointer(accounts, 'pointerout', 'mouse', document.body)
+    expect(container.querySelector('.cmd-account-detail')).not.toBeNull()
+    expect(document.activeElement).toBe(link)
   })
 })
 

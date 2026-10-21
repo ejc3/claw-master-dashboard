@@ -263,9 +263,12 @@ export function PoolAccounts(props: {
     <div
       className="cmd-accounts"
       ref={ref}
-      // A mouse's detail follows it: on a wide screen it floats over the charts, so it goes with the mouse.
+      // A mouse's detail follows it: on a wide screen it floats over the charts, so it goes with the mouse,
+      // unless focus is in it (a calendar link reached from the keyboard stays where it is).
       onPointerLeave={(event) => {
-        if (event.pointerType === 'mouse') setOpen(null)
+        if (event.pointerType !== 'mouse') return
+        if (document.getElementById('cmd-account-detail')?.contains(document.activeElement)) return
+        setOpen(null)
       }}
     >
       <ul aria-label="What each subscription has left of its weekly and 5-hour limits">
