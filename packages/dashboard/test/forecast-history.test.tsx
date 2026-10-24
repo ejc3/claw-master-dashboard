@@ -3,14 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  HOUR_MS,
-  type PoolGaps,
-  type ProfileStatus,
-  poolGaps,
-  WEEK_MS,
-  wasteAndClipping,
-} from '../src/core/index'
+import { HOUR_MS, type PoolGaps, type ProfileStatus, poolGaps, WEEK_MS } from '../src/core/index'
 import { createDemoSource } from '../src/demo/index'
 import { createDashboardHandler } from '../src/next/index'
 import { ForecastHistory } from '../src/react/ForecastHistory'
@@ -139,77 +132,46 @@ function halfUsed(at: number): ProfileStatus {
 }
 
 describe('ForecastHistory', () => {
-  it('charts an hour of every hour of the last week', async () => {
+  it('charts running totals over the two weeks around now, never falling', async () => {
     const page = mount()
     page.render(T0)
     await page.settle()
-    expect(page.rows()).toBe(169)
-  })
-
-  it('works out the hours it missed while away once their readings arrive', async () => {
-    const page = mount()
-    page.render(T0)
-    await page.settle()
-    // Back eight hours later: the moved ranges load while the old answers show.
-    page.hold()
-    const later = T0 + 8 * HOUR_MS
-    page.at(later)
-    page.render(later)
-    await page.settle()
-    page.letGo()
-    await page.settle()
-    expect(page.rows()).toBe(169)
-  })
-
-  it('goes on a week ahead from the forecast now, with its gaps shaded and now marked', async () => {
-    // One subscription half used, resetting in 10 hours at 1% an hour: 40% thrown away then.
-    const profile: ProfileStatus = {
-      profile: 'a',
-      band: 'ok',
-      weekly: { usedFraction: 0.5, resetsAt: T0 + 10 * HOUR_MS, lengthMs: WEEK_MS },
-      fiveHour: null,
-      rateLimitedUntil: null,
-      tokenExpiresAt: null,
-      latencyMs: { p50: null, p95: null, p99: null },
+    const tables = page.tables()
+    expect(tables).toHaveLength(2)
+    for (const rows of tables) {
+      // Every hour from a week before to a week after, and the clock between them.
+      expect(rows).toHaveLength(2 * 168 + 1 + 1)
     }
-    const gaps = poolGaps([profile], T0, new Map([['a', 0.01]]), T0)
+    // Newest first: a running total never falls going back up the table's rows reversed.
+    const blocked = (tables[1] ?? []).map((r) => Number.parseFloat(r[1] ?? '0')).reverse()
+    for (let i = 1; i < blocked.length; i++)
+      expect(blocked[i]).toBeGreaterThanOrEqual(blocked[i - 1] ?? 0)
+  })
+
+  it('adds the week ahead to last week, its gaps shaded and now marked on both charts', async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
     const page = mount(gaps)
     page.render(T0)
     await page.settle()
-    // Both charts mark now and shade the forecast's gaps.
     expect(
       [...page.container.querySelectorAll('.cmd-marker text')].map((t) => t.textContent),
     ).toEqual(['Now', 'Now'])
-    expect(gaps.gaps.length).toBeGreaterThan(0)
-    expect(page.container.querySelectorAll('.cmd-band')).toHaveLength(2 * gaps.gaps.length)
-    const [wasted, clipped] = page.tables()
-    // 169 hours back, the forecast's own clock, and every hour of the week ahead after it.
-    expect(clipped).toHaveLength(169 + 1 + 168)
-    expect(clipped?.[0]?.[1]).toBe('0%')
-    // At 1% an hour the new week runs out about 100 hours after the reset: that gap is clipped.
-    const now = wasteAndClipping(gaps)
-    expect(now.clippedHours).toBeGreaterThan(50)
-    expect(clipped?.[168]?.[1]).toBe(`${Math.round(now.clipped * 100)}%`)
-    // The waste is a spike at the reset, 10 hours on, and nothing either side of it.
-    const spike = wasted?.findIndex((row) => row[1] === '40%') ?? -1
-    expect(spike).toBeGreaterThan(0)
-    expect(wasted?.[spike - 1]?.[1]).toBe('0%')
-    expect(wasted?.[spike + 1]?.[1]).toBe('0%')
-    expect(page.container.querySelector('figcaption')?.textContent).toMatch(
-      /^Wasted at resets · 40% ahead · \d+% last week$/,
+    const captions = [...page.container.querySelectorAll('figcaption')].map((f) => f.textContent)
+    // a's reset in 10 hours throws away 40%; at 1% an hour its new week then runs out.
+    expect(captions[0]).toMatch(/^Wasted at resets · \d+% last week · 40% next week$/)
+    const hours = gaps.gaps.reduce(
+      (sum, g) => sum + (Math.min(g.end ?? T0 + WEEK_MS, T0 + WEEK_MS) - g.start) / HOUR_MS,
+      0,
     )
-  })
-
-  it('takes the forecast now at its own clock over a rebuilt hour at the same time', async () => {
-    const onHour = Date.UTC(2026, 9, 20, 12)
-    const gaps = poolGaps([halfUsed(onHour)], onHour, new Map([['a', 0.01]]), onHour)
-    const page = mount(gaps)
-    page.render(T0)
-    await page.settle()
-    const clipped = page.tables().at(-1)
-    // 168 rebuilt hours before 12:00, then 12:00 and every hour of the week ahead.
-    expect(clipped).toHaveLength(168 + 1 + 168)
-    expect(clipped?.[168]?.[1]).toBe(`${Math.round(wasteAndClipping(gaps).clipped * 100)}%`)
+    expect(hours).toBeGreaterThan(10)
+    expect(captions[1]).toMatch(new RegExp(`· ${Math.round(hours)}h next week$`))
+    expect(page.container.querySelectorAll('.cmd-band').length).toBeGreaterThanOrEqual(2)
+    // Oldest first: 168 hours to 12:00, the clock (12:05) at 169, 13:00 at 170. The waste steps
+    // up by 40% at the reset (22:05), so first at 23:00, index 180, and not before.
+    const percent = (row: Array<string | null> | undefined) => Number.parseFloat(row?.[1] ?? '')
+    const wasted = [...(page.tables()[0] ?? [])].reverse()
+    expect(percent(wasted[179])).toBe(percent(wasted[169]))
+    expect(percent(wasted[180]) - percent(wasted[169])).toBe(40)
   })
 
   it('holds the charts back, with the tabs up, until last week is worked out', async () => {
@@ -238,9 +200,9 @@ describe('ForecastHistory', () => {
     page.render(T0)
     await page.settle()
     expect(page.container.querySelector('figcaption')?.textContent).toBe(
-      'Wasted at resets · 40% ahead',
+      'Wasted at resets · 40% next week',
     )
-    expect(page.tables().at(-1)).toHaveLength(1 + 168)
+    expect(page.tables().at(-1)).toHaveLength(2 * 168 + 1 + 1)
   })
 
   it('switches the week ahead to last week replayed, once last week is in', async () => {
@@ -257,7 +219,7 @@ describe('ForecastHistory', () => {
     page.render(T0)
     await page.settle()
     const title = () => page.container.querySelector('figcaption')?.textContent ?? ''
-    expect(title()).toMatch(/^Wasted at resets · 40% ahead/)
+    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 40% next week/)
     const tab = [...page.container.querySelectorAll('button')].find(
       (b) => b.textContent === 'Like last week',
     )
@@ -266,25 +228,8 @@ describe('ForecastHistory', () => {
     expect(paces.length).toBeGreaterThan(0)
     expect(paces.at(-1)?.(T0).weekly).toBeGreaterThanOrEqual(0)
     act(() => tab?.click())
-    expect(title()).toMatch(/^Wasted at resets · 90% ahead/)
+    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 90% next week/)
     expect(page.container.textContent).toContain('Most wasted: a 90%')
-  })
-
-  it('puts both charts on one time axis when a reset falls past the last hour', async () => {
-    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
-    // A reset a minute before the horizon: after the last whole hour the clipping chart has.
-    const late: PoolGaps = {
-      ...gaps,
-      unusedAtReset: [{ profile: 'a', at: T0 + WEEK_MS - 60_000, unused: 0.5 }],
-    }
-    const page = mount(late)
-    page.render(T0)
-    await page.settle()
-    const nows = [...page.container.querySelectorAll('.cmd-marker line')].map((l) =>
-      l.getAttribute('x1'),
-    )
-    expect(nows).toHaveLength(2)
-    expect(nows[0]).toBe(nows[1])
   })
 
   it('shows Current pace pressed when last week can no longer be replayed', async () => {

@@ -76,20 +76,16 @@ export {
   weekUsedUp,
 } from './headline'
 export {
-  extendHindcast,
-  HINDCAST_SPAN_MS,
-  type HindcastPoint,
-  hindcast,
-  hindcastTimes,
+  HISTORY_SPAN_MS,
+  measuredBlocked,
   measuredResets,
-  profilesAt,
   type QuotaHistory,
   type ResetWaste,
   replayWeekPerWindow,
-  resetSpikes,
-  wasteAndClipping,
+  runningBlocked,
+  runningWaste,
   weekAgoPace,
-} from './hindcast'
+} from './history'
 export {
   EVEN_MARGIN,
   elapsedFraction,

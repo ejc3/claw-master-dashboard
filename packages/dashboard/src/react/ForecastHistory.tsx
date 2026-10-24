@@ -1,21 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   type CapacityAdvice,
   type EpochMs,
-  extendHindcast,
   GAPS_HORIZON_MS,
-  HINDCAST_SPAN_MS,
-  type HindcastPoint,
   HOUR_MS,
-  hindcastTimes,
+  measuredBlocked,
   measuredResets,
   type PoolGaps,
   type ProfileStatus,
-  type QuotaHistory,
   replayWeekPerWindow,
-  resetSpikes,
+  runningBlocked,
+  runningWaste,
   type Series,
-  wasteAndClipping,
+  WEEK_MS,
   weekAgoPace,
   weekPerFiveHourWindow,
 } from '../core'
@@ -25,25 +22,16 @@ import { adviceLine, shortNames, unusedLine } from './Pool'
 import { historyQuery, READINGS_STEP_MS } from './queries'
 
 const asPercent = (v: number) => `${Math.round(v * 100)}%`
+const asHours = (v: number) => (v === 0 ? '0h' : v < 10 ? `${v.toFixed(1)}h` : `${Math.round(v)}h`)
 
 /** Whether a forecast says anything (a reading and a login to go on). */
 const forecastingGaps = (gaps: PoolGaps | null): gaps is PoolGaps =>
   gaps !== null && gaps.lasts !== 'unknown' && gaps.lasts !== 'logins'
 
-/** How many hours' forecasts are worked out in one task. */
-const HINDCAST_BATCH = 24
-
-/** Readings this close to the newest may still change (CloudWatch runs minutes behind). */
-const UNSETTLED_MS = 2 * HOUR_MS
-
 /**
- * What the forecast said, hour by hour over the last week, about the week ahead of it: how much
- * weekly resets would throw away, and how much demand no subscription could take. Rebuilt from
- * the quota readings, so it shows how the pace and the pool moved the outlook between the two.
- */
-/**
- * One of the readings the forecasts are rebuilt from, as last answered, with the end of the range
- * that answer covers: while a moved range loads, the last answer stays, and covers less.
+ * One of the readings last week is measured from, as last answered, with the end of the range that
+ * answer covers (while a moved range loads, the last answer stays and covers less), and whether it
+ * failed with none to fall back on.
  */
 function useHistory(
   apiBase: string,
@@ -65,9 +53,9 @@ function useHistory(
 }
 
 /**
- * What the forecast said, hour by hour over the last week, about the week ahead of it: how much
- * weekly resets would throw away, and how much demand no subscription could take. Rebuilt from
- * the quota readings, so it shows how the pace and the pool moved the outlook between the two.
+ * Tokens wasted and time without tokens over the two weeks around now, as running totals from a
+ * week ago: measured from the readings up to now, forecast after it, at the current pace or with
+ * last week's use replayed hour by hour.
  */
 export function ForecastHistory(props: {
   apiBase: string
@@ -83,61 +71,21 @@ export function ForecastHistory(props: {
    */
   forecastWith?: (paceAt: (t: EpochMs) => PoolGaps['pace']) => PoolGaps
 }) {
-  const { apiBase, now, gaps } = props
+  const { apiBase, now, gaps, forecastWith } = props
   const when = useWhen()
-  const readings = [
-    useHistory(apiBase, now, 'weeklyUsed'),
-    useHistory(apiBase, now, 'weeklyResetsInSeconds'),
-    useHistory(apiBase, now, 'fiveHourUsed'),
-    useHistory(apiBase, now, 'fiveHourResetsInSeconds'),
-  ] as const
-  const weeklyUsed = readings[0].data
-  const weeklyResets = readings[1].data
-  const fiveUsed = readings[2].data
-  const fiveResets = readings[3].data
-  // Last week cannot be rebuilt: the week ahead is shown alone rather than waiting for ever.
-  const historyFailed = readings.some((r) => r.failed)
-  const [points, setPoints] = useState<Map<EpochMs, HindcastPoint | null> | null>(null)
-  const kept = useRef<Map<EpochMs, HindcastPoint | null>>(new Map())
-  useEffect(() => {
-    if (weeklyUsed === null || weeklyResets === null || fiveUsed === null || fiveResets === null)
-      return
-    // A simulation a week long for each hour: after the page is up, and again only for the hours
-    // new readings can change. Only to the end all four answers cover: an hour past it would be
-    // worked out without its readings, and kept so once it settles.
-    const end = Math.min(weeklyUsed.end, weeklyResets.end, fiveUsed.end, fiveResets.end)
-    const history: QuotaHistory = {
-      stepMs: READINGS_STEP_MS,
-      weeklyUsed: weeklyUsed.series,
-      weeklyResetsInSeconds: weeklyResets.series,
-      fiveHourUsed: fiveUsed.series,
-      fiveHourResetsInSeconds: fiveResets.series,
-    }
-    const times = hindcastTimes(end)
-    // A day of hours at a time, each in its own task, so a phone keeps scrolling meanwhile; the
-    // charts appear when the week is done.
-    const next = new Map<EpochMs, HindcastPoint | null>()
-    let timer: ReturnType<typeof setTimeout>
-    const run = (from: number) => {
-      const slice = times.slice(from, from + HINDCAST_BATCH)
-      for (const [t, point] of extendHindcast(kept.current, history, slice, end - UNSETTLED_MS)) {
-        next.set(t, point)
-      }
-      if (from + HINDCAST_BATCH < times.length) {
-        timer = setTimeout(() => run(from + HINDCAST_BATCH), 0)
-        return
-      }
-      kept.current = next
-      setPoints(next)
-    }
-    timer = setTimeout(() => run(0), 0)
-    return () => clearTimeout(timer)
-  }, [weeklyUsed, weeklyResets, fiveUsed, fiveResets])
+  const weekly = useHistory(apiBase, now, 'weeklyUsed')
+  const resets = useHistory(apiBase, now, 'weeklyResetsInSeconds')
+  const five = useHistory(apiBase, now, 'fiveHourUsed')
+  const weeklyUsed = weekly.data
+  const weeklyResets = resets.data
+  const fiveUsed = five.data
+  // Last week cannot be measured: the week ahead is shown alone rather than waiting for ever.
+  const historyFailed = weekly.failed || resets.failed || five.failed
+  const measuring = weeklyUsed !== null && weeklyResets !== null && fiveUsed !== null
 
   // Two forecasts of the week ahead: the headline's, at the current pace, and one that replays
   // last week hour by hour (from the same readings, once they are in).
   const [model, setModel] = useState<'pace' | 'lastWeek'>('pace')
-  const { forecastWith } = props
   const lastWeekPace = useMemo(() => {
     if (weeklyUsed === null || fiveUsed === null) return null
     const end = Math.min(weeklyUsed.end, fiveUsed.end)
@@ -154,103 +102,83 @@ export function ForecastHistory(props: {
         : forecastWith(lastWeekPace),
     [forecastWith, lastWeekPace, gaps],
   )
-  const likeLastWeek = model === 'lastWeek' && lastWeekGaps !== null && lastWeekPace !== null
+  const likeLastWeek = model === 'lastWeek' && lastWeekGaps !== null
   const shown = likeLastWeek ? lastWeekGaps : gaps
-  const paceAt = likeLastWeek ? lastWeekPace : undefined
 
-  // One grid: each hour of the last week as its forecast saw the week ahead, then each hour of the
-  // week ahead as the chosen forecast sees what is still to come from it, so the steps down show
-  // when the clipping falls. The waste chart draws its resets on the same grid.
-  const series: ChartSeries[] = useMemo(() => {
-    // The week ahead does not wait on last week's readings, nor fail with them.
-    const made = [...(points?.values() ?? [])].filter((p): p is HindcastPoint => p !== null)
-    const ahead: HindcastPoint[] = []
-    if (forecastingGaps(shown)) {
-      ahead.push(wasteAndClipping(shown, shown.clock, paceAt))
-      const first = Math.floor(shown.clock / HOUR_MS) * HOUR_MS + HOUR_MS
-      for (let t = first; t <= shown.clock + GAPS_HORIZON_MS; t += HOUR_MS) {
-        ahead.push(wasteAndClipping(shown, t, paceAt))
-      }
+  // The two weeks around now, hour by hour, and the forecast's clock between them.
+  const clock = shown?.clock ?? now
+  const times = useMemo(() => {
+    const hour = Math.floor(clock / HOUR_MS) * HOUR_MS
+    const grid: EpochMs[] = []
+    for (let t = hour - WEEK_MS; t <= hour + WEEK_MS; t += HOUR_MS) grid.push(t)
+    if (!grid.includes(clock)) grid.push(clock)
+    return grid.sort((a, b) => a - b)
+  }, [clock])
+
+  // Before now, what the readings show; after it, what the chosen forecast expects.
+  const past = useMemo(() => {
+    if (weeklyUsed === null || weeklyResets === null || fiveUsed === null) return null
+    const from = times[0] ?? clock
+    const end = Math.min(weeklyUsed.end, weeklyResets.end, fiveUsed.end, clock)
+    const history = {
+      stepMs: READINGS_STEP_MS,
+      weeklyUsed: weeklyUsed.series,
+      weeklyResetsInSeconds: weeklyResets.series,
+      fiveHourUsed: fiveUsed.series,
     }
-    // The forecast now, from its own clock on: a rebuilt hour at or after it gives way.
-    const from = ahead[0]?.at ?? Number.POSITIVE_INFINITY
-    const all = [...made.filter((p) => p.at < from), ...ahead]
-    if (all.length === 0) return []
+    return {
+      resets: measuredResets(history, from, end),
+      blocked: measuredBlocked(history, from, end),
+    }
+  }, [weeklyUsed, weeklyResets, fiveUsed, times, clock])
+  const ahead = useMemo(() => {
+    if (!forecastingGaps(shown)) return null
+    const until = shown.clock + GAPS_HORIZON_MS
+    return {
+      resets: shown.unusedAtReset.filter((r) => r.at >= shown.clock),
+      blocked: shown.gaps.map((g) => ({
+        start: Math.max(g.start, shown.clock),
+        end: Math.min(g.end ?? until, until),
+      })),
+    }
+  }, [shown])
+
+  const series: ChartSeries[] = useMemo(() => {
+    const resetsSeen = [...(past?.resets ?? []), ...(ahead?.resets ?? [])]
+    const blocked = [...(past?.blocked ?? []), ...(ahead?.blocked ?? [])]
     return [
       {
         key: 'wasted',
         label: 'Wasted at resets',
         color: 'var(--cmd-series-3)',
-        points: all.map((p): [EpochMs, number] => [p.at, p.wasted]),
+        points: runningWaste(resetsSeen, times),
       },
       {
-        key: 'clipped',
-        label: 'Shortfall',
+        key: 'blocked',
+        label: 'Without tokens',
         color: 'var(--cmd-series-2)',
-        points: all.map((p): [EpochMs, number] => [p.at, p.clipped]),
+        points: runningBlocked(blocked, times),
       },
     ]
-  }, [points, shown, paceAt])
+  }, [past, ahead, times])
 
-  // Waste happens at a reset: a spike there, sized by what it threw away. Before now, the resets
-  // the readings show; after, the ones the chosen forecast expects.
-  const past = useMemo(() => {
-    if (weeklyUsed === null || weeklyResets === null) return null
-    const end = Math.min(weeklyUsed.end, weeklyResets.end, gaps?.clock ?? Number.POSITIVE_INFINITY)
-    return measuredResets(
-      {
-        stepMs: READINGS_STEP_MS,
-        weeklyUsed: weeklyUsed.series,
-        weeklyResetsInSeconds: weeklyResets.series,
-      },
-      end - HINDCAST_SPAN_MS,
-      end,
-    )
-  }, [weeklyUsed, weeklyResets, gaps])
-  const wasteSeries: ChartSeries | null = useMemo(() => {
-    const times = series[0]?.points.map(([t]) => t) ?? []
-    if (times.length < 2) return null
-    const ahead = forecastingGaps(shown) ? shown.unusedAtReset : []
-    return {
-      key: 'wasted',
-      label: 'Wasted at resets',
-      color: 'var(--cmd-series-3)',
-      points: resetSpikes([...(past ?? []), ...ahead], times),
-    }
-  }, [series, past, shown])
-  const charts = series
-    .map((s) => (s.key === 'wasted' ? wasteSeries : s))
-    .filter((s): s is ChartSeries => s !== null)
-  // One time axis for both: a reset's spike can fall past the last hour, or before the first.
-  const domainStart = Math.min(...charts.map((s) => s.points[0]?.[0] ?? Number.POSITIVE_INFINITY))
-  const domainEnd = Math.max(...charts.map((s) => s.points.at(-1)?.[0] ?? Number.NEGATIVE_INFINITY))
-  const domain =
-    Number.isFinite(domainStart) && Number.isFinite(domainEnd)
-      ? { start: domainStart, end: domainEnd }
-      : undefined
-
+  // Each title: last week's total and the next week's.
+  const totalAt = (s: ChartSeries, t: EpochMs) =>
+    s.points.filter(([time]) => time <= t).at(-1)?.[1] ?? 0
   const bands = useMemo(
-    () =>
-      (shown?.gaps ?? []).map((g) => ({
-        start: g.start,
-        end: g.end ?? (shown?.clock ?? 0) + GAPS_HORIZON_MS,
-      })),
-    [shown],
+    () => [...(past?.blocked ?? []), ...(ahead?.blocked ?? [])].filter((b) => b.end > b.start),
+    [past, ahead],
   )
-  // The week ahead as the chosen forecast sees it: each title's value.
-  const ahead = useMemo(
-    () => (forecastingGaps(shown) ? wasteAndClipping(shown, shown.clock, paceAt) : null),
-    [shown, paceAt],
-  )
+
   const names = shortNames((props.profiles ?? []).map((p) => p.profile))
-  const clock = when === null ? null : (t: EpochMs) => when(t, now)
+  const clockText = when === null ? null : (t: EpochMs) => when(t, now)
   // What to buy or cancel stays the headline's: it is worked out at the current pace.
   const lines = forecastingGaps(shown)
-    ? [unusedLine(shown, names, clock), adviceLine(props.advice ?? null, names, now, clock)]
+    ? [unusedLine(shown, names, clockText), adviceLine(props.advice ?? null, names, now, clockText)]
     : []
 
   return (
-    <section className="cmd-forecast-history" aria-label="Waste and clipping">
+    <section className="cmd-forecast-history" aria-label="Waste and time without tokens">
       {forecastingGaps(gaps) && (
         <fieldset className="cmd-segmented cmd-capacity-tabs">
           <legend className="cmd-visually-hidden">Week ahead</legend>
@@ -269,38 +197,31 @@ export function ForecastHistory(props: {
           </button>
         </fieldset>
       )}
-      {(points === null && !historyFailed) ||
-      series.length === 0 ||
-      (series[0]?.points.length ?? 0) < 2 ? (
-        // Both charts span last week and the next: until last week is worked out, a half-drawn
-        // pair would read as a week with nothing in it.
-        <p className="cmd-empty cmd-forecast-loading">Working out last week's forecasts…</p>
+      {!measuring && !historyFailed ? (
+        // The totals run from a week ago: until last week is read, they would start from nothing.
+        <p className="cmd-empty cmd-forecast-loading">Reading last week…</p>
       ) : (
-        // One chart each, on the same time axis: a week of clipping can be ten subscriptions'
-        // worth, and on its scale the waste would not show.
-        charts.map((s) => (
-          <LineChart
-            key={s.key}
-            title={`${s.key === 'wasted' ? 'Wasted at resets' : 'Shortfall'}${
-              ahead === null
-                ? ''
-                : ` · ${asPercent(s.key === 'wasted' ? ahead.wasted : ahead.clipped)} ahead`
-            }${
-              s.key === 'wasted' && past !== null
-                ? ` · ${asPercent(past.reduce((sum, r) => sum + r.unused, 0))} last week`
-                : ''
-            }`}
-            series={[s]}
-            format={asPercent}
-            height={140}
-            now={now}
-            bands={bands}
-            bandLabel="No tokens forecast"
-            area
-            {...(shown === null ? {} : { marker: { at: shown.clock, label: 'Now' } })}
-            {...(domain === undefined ? {} : { domain })}
-          />
-        ))
+        series.map((s) => {
+          const format = s.key === 'wasted' ? asPercent : asHours
+          const sofar = totalAt(s, clock)
+          const lastWeek = past === null ? '' : ` · ${format(sofar)} last week`
+          const nextWeek =
+            ahead === null ? '' : ` · ${format((s.points.at(-1)?.[1] ?? 0) - sofar)} next week`
+          return (
+            <LineChart
+              key={s.key}
+              title={`${s.label}${lastWeek}${nextWeek}`}
+              series={[s]}
+              format={format}
+              height={140}
+              now={now}
+              bands={bands}
+              bandLabel="Without tokens"
+              area
+              marker={{ at: clock, label: 'Now' }}
+            />
+          )
+        })
       )}
       {lines.some((l) => l !== null) && (
         <ul className="cmd-facts cmd-forecast-facts">
@@ -312,10 +233,9 @@ export function ForecastHistory(props: {
         </ul>
       )}
       <p className="cmd-capacity-note">
-        Wasted: each reset's unused share, measured before now, forecast after · shortfall: demand
-        no subscription could take; before now, each hour's forecast of its next week, after, what
-        is still to come · like last week: last week's use replayed hour by hour, low where it ran
-        out · 100% is one subscription's week
+        Running totals from a week ago: measured before now, forecast after · wasted: what each
+        weekly reset threw away, 100% being one subscription's week · without tokens: hours no
+        subscription could take work · like last week: last week's use replayed hour by hour
       </p>
     </section>
   )
