@@ -1,6 +1,7 @@
 import {
   type Dimension,
   type EpochMs,
+  HINDCAST_SPAN_MS,
   HOUR_MS,
   type Series,
   type SeriesQuery,
@@ -98,6 +99,7 @@ export const SPLITS: ReadonlyArray<{
 export const KPI_STEP_SECONDS = 300
 const KPI_STEP_MS = KPI_STEP_SECONDS * 1000
 const READINGS_STEP_SECONDS = 600
+export const READINGS_STEP_MS = READINGS_STEP_SECONDS * 1000
 
 /** Step-aligned, so every viewer and every refresh within a step asks for the same range. */
 export function rangeEnding(now: EpochMs, ms: number, stepSeconds: number): TimeRange {
@@ -173,6 +175,26 @@ export function readingsQuery(
     range: rangeEnding(
       now,
       Math.max(WEEKLY_SMOOTHING_MS, WEEK_PER_WINDOW_SPAN_MS),
+      READINGS_STEP_SECONDS,
+    ),
+    stepSeconds: READINGS_STEP_SECONDS,
+  }
+}
+
+/**
+ * The quota readings the last week's forecasts are rebuilt from (core/hindcast): a week of them,
+ * and the two days of readings the first one's pace is measured over.
+ */
+export function historyQuery(
+  now: EpochMs,
+  metric: 'weeklyUsed' | 'weeklyResetsInSeconds' | 'fiveHourUsed' | 'fiveHourResetsInSeconds',
+): SeriesQuery {
+  return {
+    metric,
+    groupBy: 'profile',
+    range: rangeEnding(
+      now,
+      HINDCAST_SPAN_MS + Math.max(WEEKLY_SMOOTHING_MS, WEEK_PER_WINDOW_SPAN_MS),
       READINGS_STEP_SECONDS,
     ),
     stepSeconds: READINGS_STEP_SECONDS,

@@ -92,6 +92,7 @@ export type SemanticMetric =
   | 'weeklyUsed'
   | 'fiveHourUsed'
   | 'weeklyResetsInSeconds'
+  | 'fiveHourResetsInSeconds'
   | 'tokenExpiresInSeconds'
   | 'tokens'
 

@@ -76,6 +76,16 @@ export {
   weekUsedUp,
 } from './headline'
 export {
+  extendHindcast,
+  HINDCAST_SPAN_MS,
+  type HindcastPoint,
+  hindcast,
+  hindcastTimes,
+  profilesAt,
+  type QuotaHistory,
+  wasteAndClipping,
+} from './hindcast'
+export {
   EVEN_MARGIN,
   elapsedFraction,
   OVER_MARGIN,

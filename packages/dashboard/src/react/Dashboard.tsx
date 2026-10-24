@@ -35,6 +35,7 @@ import {
 } from '../core'
 import { useSharedAnswers } from './answers'
 import { Breakdown } from './Breakdown'
+import { ForecastHistory } from './ForecastHistory'
 import {
   type FirstPaint,
   FirstPaintContext,
@@ -504,6 +505,8 @@ function DashboardBody(props: DashboardProps) {
           detail={outlookDetail}
           advice={advice}
         />
+
+        <ForecastHistory apiBase={apiBase} now={now} />
 
         <section className="cmd-kpis" aria-label="Traffic">
           {tokensLastHour === null || tokensLastHourTotal === null ? (

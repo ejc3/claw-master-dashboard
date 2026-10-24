@@ -89,6 +89,12 @@ const CATALOG: Record<SemanticMetric, Entry> = {
     statistic: 'MAX',
     dimensions: ['profile'],
   },
+  // The usage poll's countdown to the 5-hour window's reset, reported while a window is open.
+  fiveHourResetsInSeconds: {
+    name: 'claw_master.quota.five_hour.resets_in_seconds',
+    statistic: 'MAX',
+    dimensions: ['profile'],
+  },
   tokenExpiresInSeconds: {
     name: 'claw_master.auth.token_expires_in_seconds',
     statistic: 'MIN',
