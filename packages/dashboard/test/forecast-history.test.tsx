@@ -60,8 +60,10 @@ function mount(
   const source = createDemoSource({ now: () => clock })
   const { GET } = createDashboardHandler({ source: () => source, authorize: () => true })
   let held = false
+  let failing = false
   const waiting: Array<() => void> = []
   const store = createPollStore(async (url) => {
+    if (failing) return new Response('{"error":"down"}', { status: 502 })
     if (held) await new Promise<void>((resolve) => waiting.push(resolve))
     return GET(new Request(`http://dashboard.test${url}`))
   })
@@ -111,6 +113,9 @@ function mount(
     },
     hold: () => {
       held = true
+    },
+    fail: () => {
+      failing = true
     },
     letGo: () => {
       held = false
@@ -206,10 +211,29 @@ describe('ForecastHistory', () => {
     expect(clipped?.[168]?.[1]).toBe(`${Math.round(wasteAndClipping(gaps).clipped * 100)}%`)
   })
 
-  it("shows the week ahead and its title's value when last week's readings never come", async () => {
+  it('holds the charts back, with the tabs up, until last week is worked out', async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    const page = mount(gaps, () => gaps)
+    page.hold()
+    page.render(T0)
+    await page.settle()
+    // No half-drawn pair: a placeholder holds their place.
+    expect(page.container.querySelectorAll('figure')).toHaveLength(0)
+    expect(page.container.querySelector('.cmd-forecast-loading')).not.toBeNull()
+    const tab = (name: string) =>
+      [...page.container.querySelectorAll('button')].find((b) => b.textContent === name)
+    expect(tab('Current pace')?.getAttribute('aria-pressed')).toBe('true')
+    expect(tab('Like last week')?.disabled).toBe(true)
+    page.letGo()
+    await page.settle()
+    expect(page.container.querySelectorAll('figure')).toHaveLength(2)
+    expect(tab('Like last week')?.disabled).toBe(false)
+  })
+
+  it("shows the week ahead and its title's value when last week's readings fail", async () => {
     const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
     const page = mount(gaps)
-    page.hold()
+    page.fail()
     page.render(T0)
     await page.settle()
     expect(page.container.querySelector('figcaption')?.textContent).toBe(

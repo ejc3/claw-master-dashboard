@@ -6,6 +6,7 @@ import {
   poolPace,
   poolRates,
   riseOver,
+  WEEK_PER_WINDOW_SPAN_MS,
   WEEKLY_SMOOTHING_MS,
 } from './forecast'
 import {
@@ -147,6 +148,25 @@ export function wasteAndClipping(
   }
 }
 
+/** The points from `from` to `to`, both included, of points in time order (a binary search). */
+function between(
+  points: Array<[EpochMs, number]>,
+  from: EpochMs,
+  to: EpochMs,
+): Array<[EpochMs, number]> {
+  const first = (t: EpochMs) => {
+    let lo = 0
+    let hi = points.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if ((points[mid]?.[0] ?? 0) < t) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+  return points.slice(first(from), first(to + 1))
+}
+
 /** How finely a pace that changes is summed through a gap. */
 const PACE_STEP_MS = 10 * 60_000
 
@@ -189,21 +209,33 @@ export function hindcast(history: QuotaHistory, times: EpochMs[]): Array<Hindcas
     if (profiles.length === 0) return null
     // Readings from buckets that ended by t: the one starting a step before t is the last.
     const readBy = t - 1
+    // Each measure reads only its own span; cut to it first, so 169 hours do not each scan nine
+    // days of readings.
+    const span = Math.max(WEEKLY_SMOOTHING_MS, WEEK_PER_WINDOW_SPAN_MS)
+    const recent = (series: Series[]) =>
+      series.map((s) => ({ key: s.key, points: between(s.points, readBy - span, readBy) }))
+    const weekly = recent(history.weeklyUsed)
     const smoothed = new Map<string, number | null>()
-    for (const s of history.weeklyUsed) {
-      smoothed.set(s.key, burnRate(s.points, readBy, WEEKLY_SMOOTHING_MS))
-    }
-    const rates = poolRates(history.weeklyUsed, history.fiveHourUsed, readBy)
+    for (const s of weekly) smoothed.set(s.key, burnRate(s.points, readBy, WEEKLY_SMOOTHING_MS))
+    const rates = poolRates(weekly, recent(history.fiveHourUsed), readBy)
     // The subscriptions' own pace is needed only where the readings cannot tell, and it costs a
     // whole simulation.
     const measured =
       rates.weekly !== null && rates.weekPerWindow !== null
         ? { weekly: 0, fiveHour: 0 }
-        : poolGaps(profiles, t, smoothed, t).pace
+        : poolGaps(profiles, t, smoothed, t, false, undefined, undefined, HINDCAST_STEP_MS).pace
     const pace = poolPace(measured, rates)
-    return wasteAndClipping(poolGaps(profiles, t, smoothed, t, false, pace))
+    return wasteAndClipping(
+      poolGaps(profiles, t, smoothed, t, false, pace, undefined, HINDCAST_STEP_MS),
+    )
   })
 }
+
+/**
+ * The simulation's step for a rebuilt forecast: ten minutes, as the readings are. A week's totals
+ * do not turn on a gap's minutes, and a week of hours is 169 runs.
+ */
+const HINDCAST_STEP_MS = 10 * 60_000
 
 /** How far back the forecasts are rebuilt: a week of them, one an hour. */
 export const HINDCAST_SPAN_MS = 7 * 24 * HOUR_MS

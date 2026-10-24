@@ -304,6 +304,11 @@
     color: var(--cmd-ink-3);
   }
 
+  /* Holds the two charts' place while last week is worked out, so nothing below jumps. */
+  .cmd-forecast-loading {
+    min-height: 27rem;
+  }
+
   .cmd-forecast-history .cmd-capacity-note,
   .cmd-forecast-history .cmd-forecast-facts {
     padding: 0 16px;

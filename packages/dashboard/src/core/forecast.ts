@@ -571,6 +571,11 @@ export function poolGaps(
    * (last week's, hour by hour). `pace` is still what the result reports.
    */
   paceAt?: (t: EpochMs) => PoolGaps['pace'],
+  /**
+   * How far apart the steps are. Finer than a 5-hour card's by default; a coarser one is for many
+   * runs where a gap's minutes do not matter (a week of rebuilt forecasts).
+   */
+  stepMs: number = GAPS_STEP_MS,
 ): PoolGaps {
   const slots: JointSlot[] = []
   let weeklyDemand = 0
@@ -677,7 +682,7 @@ export function poolGaps(
     }
   }
 
-  const step = GAPS_STEP_MS
+  const step = stepMs
   let perWeek = (weeklyDemand / HOUR_MS) * step
   let perFive = (fiveDemand / HOUR_MS) * step
   // A pattern may pick up after an idle stretch, so only one pace throughout ends early when idle.

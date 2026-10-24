@@ -30,6 +30,9 @@ const asPercent = (v: number) => `${Math.round(v * 100)}%`
 const forecastingGaps = (gaps: PoolGaps | null): gaps is PoolGaps =>
   gaps !== null && gaps.lasts !== 'unknown' && gaps.lasts !== 'logins'
 
+/** How many hours' forecasts are worked out in one task. */
+const HINDCAST_BATCH = 24
+
 /** Readings this close to the newest may still change (CloudWatch runs minutes behind). */
 const UNSETTLED_MS = 2 * HOUR_MS
 
@@ -46,7 +49,7 @@ function useHistory(
   apiBase: string,
   now: EpochMs,
   metric: Parameters<typeof historyQuery>[1],
-): { series: Series[]; end: EpochMs } | null {
+): { data: { series: Series[]; end: EpochMs } | null; failed: boolean } {
   const query = historyQuery(now, metric)
   const loaded = useReadings(apiBase, query)
   // The same object until a new answer comes, so what is worked out from it is not redone on
@@ -58,7 +61,7 @@ function useHistory(
       kept.current = { series: loaded.data, end }
     }
   }
-  return kept.current
+  return { data: kept.current, failed: kept.current === null && loaded.state === 'error' }
 }
 
 /**
@@ -82,10 +85,18 @@ export function ForecastHistory(props: {
 }) {
   const { apiBase, now, gaps } = props
   const when = useWhen()
-  const weeklyUsed = useHistory(apiBase, now, 'weeklyUsed')
-  const weeklyResets = useHistory(apiBase, now, 'weeklyResetsInSeconds')
-  const fiveUsed = useHistory(apiBase, now, 'fiveHourUsed')
-  const fiveResets = useHistory(apiBase, now, 'fiveHourResetsInSeconds')
+  const readings = [
+    useHistory(apiBase, now, 'weeklyUsed'),
+    useHistory(apiBase, now, 'weeklyResetsInSeconds'),
+    useHistory(apiBase, now, 'fiveHourUsed'),
+    useHistory(apiBase, now, 'fiveHourResetsInSeconds'),
+  ] as const
+  const weeklyUsed = readings[0].data
+  const weeklyResets = readings[1].data
+  const fiveUsed = readings[2].data
+  const fiveResets = readings[3].data
+  // Last week cannot be rebuilt: the week ahead is shown alone rather than waiting for ever.
+  const historyFailed = readings.some((r) => r.failed)
   const [points, setPoints] = useState<Map<EpochMs, HindcastPoint | null> | null>(null)
   const kept = useRef<Map<EpochMs, HindcastPoint | null>>(new Map())
   useEffect(() => {
@@ -95,18 +106,31 @@ export function ForecastHistory(props: {
     // new readings can change. Only to the end all four answers cover: an hour past it would be
     // worked out without its readings, and kept so once it settles.
     const end = Math.min(weeklyUsed.end, weeklyResets.end, fiveUsed.end, fiveResets.end)
-    const timer = setTimeout(() => {
-      const history: QuotaHistory = {
-        stepMs: READINGS_STEP_MS,
-        weeklyUsed: weeklyUsed.series,
-        weeklyResetsInSeconds: weeklyResets.series,
-        fiveHourUsed: fiveUsed.series,
-        fiveHourResetsInSeconds: fiveResets.series,
+    const history: QuotaHistory = {
+      stepMs: READINGS_STEP_MS,
+      weeklyUsed: weeklyUsed.series,
+      weeklyResetsInSeconds: weeklyResets.series,
+      fiveHourUsed: fiveUsed.series,
+      fiveHourResetsInSeconds: fiveResets.series,
+    }
+    const times = hindcastTimes(end)
+    // A day of hours at a time, each in its own task, so a phone keeps scrolling meanwhile; the
+    // charts appear when the week is done.
+    const next = new Map<EpochMs, HindcastPoint | null>()
+    let timer: ReturnType<typeof setTimeout>
+    const run = (from: number) => {
+      const slice = times.slice(from, from + HINDCAST_BATCH)
+      for (const [t, point] of extendHindcast(kept.current, history, slice, end - UNSETTLED_MS)) {
+        next.set(t, point)
       }
-      const next = extendHindcast(kept.current, history, hindcastTimes(end), end - UNSETTLED_MS)
+      if (from + HINDCAST_BATCH < times.length) {
+        timer = setTimeout(() => run(from + HINDCAST_BATCH), 0)
+        return
+      }
       kept.current = next
       setPoints(next)
-    }, 0)
+    }
+    timer = setTimeout(() => run(0), 0)
     return () => clearTimeout(timer)
   }, [weeklyUsed, weeklyResets, fiveUsed, fiveResets])
 
@@ -227,7 +251,7 @@ export function ForecastHistory(props: {
 
   return (
     <section className="cmd-forecast-history" aria-label="Waste and clipping">
-      {lastWeekGaps !== null && (
+      {forecastingGaps(gaps) && (
         <fieldset className="cmd-segmented cmd-capacity-tabs">
           <legend className="cmd-visually-hidden">Week ahead</legend>
           <button type="button" aria-pressed={model === 'pace'} onClick={() => setModel('pace')}>
@@ -236,14 +260,20 @@ export function ForecastHistory(props: {
           <button
             type="button"
             aria-pressed={model === 'lastWeek'}
+            disabled={lastWeekGaps === null}
+            title={lastWeekGaps === null ? "Waiting for last week's readings" : undefined}
             onClick={() => setModel('lastWeek')}
           >
             Like last week
           </button>
         </fieldset>
       )}
-      {series.length === 0 || (series[0]?.points.length ?? 0) < 2 ? (
-        <p className="cmd-empty">Rebuilding last week's forecasts…</p>
+      {(points === null && !historyFailed) ||
+      series.length === 0 ||
+      (series[0]?.points.length ?? 0) < 2 ? (
+        // Both charts span last week and the next: until last week is worked out, a half-drawn
+        // pair would read as a week with nothing in it.
+        <p className="cmd-empty cmd-forecast-loading">Working out last week's forecasts…</p>
       ) : (
         // One chart each, on the same time axis: a week of clipping can be ten subscriptions'
         // worth, and on its scale the waste would not show.
