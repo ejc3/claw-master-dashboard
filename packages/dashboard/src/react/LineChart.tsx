@@ -43,6 +43,8 @@ interface Props {
   stacked?: boolean
   /** A moment marked across the plot with a labelled line, e.g. where measured turns to forecast. */
   marker?: { at: EpochMs; label: string }
+  /** The time axis's span, when charts stacked together must share one; else the data's own. */
+  domain?: { start: EpochMs; end: EpochMs }
 }
 
 const PAD = { top: 8, right: 8, bottom: 22, left: 44 }
@@ -140,6 +142,7 @@ export const LineChart = memo(function LineChart({
   stacked = false,
   max: fixedMax,
   marker,
+  domain,
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>()
   // Series turned off from the legend; at least one always stays on.
@@ -178,8 +181,8 @@ export const LineChart = memo(function LineChart({
       }, [])
     : series.map((s) => s.points.map(([, v]) => v))
   const max = fixedMax ?? niceMax(Math.max(0, ...tops.flat()), integer)
-  const first = times[0] ?? 0
-  const last = times[times.length - 1] ?? 1
+  const first = domain?.start ?? times[0] ?? 0
+  const last = domain?.end ?? times[times.length - 1] ?? 1
   const x = (t: EpochMs) =>
     PAD.left + (last === first ? 0 : ((t - first) / (last - first)) * plotWidth)
   const y = (v: number) => PAD.top + plotHeight - (v / max) * plotHeight

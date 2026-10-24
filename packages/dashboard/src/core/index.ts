@@ -81,9 +81,14 @@ export {
   type HindcastPoint,
   hindcast,
   hindcastTimes,
+  measuredResets,
   profilesAt,
   type QuotaHistory,
+  type ResetWaste,
+  replayWeekPerWindow,
+  resetSpikes,
   wasteAndClipping,
+  weekAgoPace,
 } from './hindcast'
 export {
   EVEN_MARGIN,
