@@ -276,6 +276,14 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
         )
         return groupBy !== undefined ? values : [reduce('MAX', values)]
       }
+      case 'fiveHourResetsInSeconds': {
+        const values = PROFILES.map((p) =>
+          p.fiveHourUsed === null || (p.joinedAgoMs !== undefined && m < now - p.joinedAgoMs)
+            ? Number.NaN
+            : mod(now + p.fiveHourResetsInMs - m, FIVE_HOURS_MS) / 1000,
+        )
+        return groupBy !== undefined ? values : [reduce('MAX', values)]
+      }
       case 'weeklyUsed':
       case 'weeklyResetsInSeconds':
       case 'tokenExpiresInSeconds': {

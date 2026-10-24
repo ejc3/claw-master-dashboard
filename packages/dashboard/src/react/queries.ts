@@ -1,6 +1,7 @@
 import {
   type Dimension,
   type EpochMs,
+  HINDCAST_SPAN_MS,
   HOUR_MS,
   type Series,
   type SeriesQuery,
@@ -173,6 +174,26 @@ export function readingsQuery(
     range: rangeEnding(
       now,
       Math.max(WEEKLY_SMOOTHING_MS, WEEK_PER_WINDOW_SPAN_MS),
+      READINGS_STEP_SECONDS,
+    ),
+    stepSeconds: READINGS_STEP_SECONDS,
+  }
+}
+
+/**
+ * The quota readings the last week's forecasts are rebuilt from (core/hindcast): a week of them,
+ * and the two days of readings the first one's pace is measured over.
+ */
+export function historyQuery(
+  now: EpochMs,
+  metric: 'weeklyUsed' | 'weeklyResetsInSeconds' | 'fiveHourUsed' | 'fiveHourResetsInSeconds',
+): SeriesQuery {
+  return {
+    metric,
+    groupBy: 'profile',
+    range: rangeEnding(
+      now,
+      HINDCAST_SPAN_MS + Math.max(WEEKLY_SMOOTHING_MS, WEEK_PER_WINDOW_SPAN_MS),
       READINGS_STEP_SECONDS,
     ),
     stepSeconds: READINGS_STEP_SECONDS,

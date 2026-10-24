@@ -280,6 +280,16 @@
     color: var(--cmd-exhausted);
   }
 
+  .cmd-forecast-history {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .cmd-forecast-history .cmd-capacity-note {
+    padding: 0 16px;
+  }
+
   .cmd-capacity-weekly {
     display: grid;
     gap: 6px;

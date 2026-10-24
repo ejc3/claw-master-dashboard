@@ -24,6 +24,7 @@ const METRICS: readonly SemanticMetric[] = [
   'weeklyUsed',
   'fiveHourUsed',
   'weeklyResetsInSeconds',
+  'fiveHourResetsInSeconds',
   'tokenExpiresInSeconds',
   'tokens',
 ]
