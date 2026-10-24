@@ -71,7 +71,8 @@ function mount(
   document.body.append(container)
   const root = createRoot(container)
   roots.push(root)
-  const render = (now: number) =>
+  // `null` for no replay: `undefined` would take the default.
+  const render = (now: number, replay: typeof forecastWith | null = forecastWith) =>
     act(() =>
       root.render(
         <PollStoreContext.Provider value={store}>
@@ -80,7 +81,7 @@ function mount(
             now={now}
             gaps={gaps}
             profiles={null}
-            {...(forecastWith === undefined ? {} : { forecastWith })}
+            {...(replay == null ? {} : { forecastWith: replay })}
           />
         </PollStoreContext.Provider>,
       ),
@@ -284,5 +285,28 @@ describe('ForecastHistory', () => {
     )
     expect(nows).toHaveLength(2)
     expect(nows[0]).toBe(nows[1])
+  })
+
+  it('shows Current pace pressed when last week can no longer be replayed', async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    const page = mount(gaps, () => gaps)
+    page.render(T0)
+    await page.settle()
+    const pressed = (name: string) =>
+      [...page.container.querySelectorAll('button')]
+        .find((b) => b.textContent === name)
+        ?.getAttribute('aria-pressed')
+    act(() =>
+      [...page.container.querySelectorAll('button')]
+        .find((b) => b.textContent === 'Like last week')
+        ?.click(),
+    )
+    expect(pressed('Like last week')).toBe('true')
+    // The replay goes (here, no way to run it): the charts are at the current pace, and so is
+    // the tab that shows pressed.
+    page.render(T0, null)
+    await page.settle()
+    expect(pressed('Current pace')).toBe('true')
+    expect(pressed('Like last week')).toBe('false')
   })
 })

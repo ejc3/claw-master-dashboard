@@ -185,7 +185,7 @@ export function ForecastHistory(props: {
       },
       {
         key: 'clipped',
-        label: 'Clipped',
+        label: 'Shortfall',
         color: 'var(--cmd-series-2)',
         points: all.map((p): [EpochMs, number] => [p.at, p.clipped]),
       },
@@ -254,12 +254,13 @@ export function ForecastHistory(props: {
       {forecastingGaps(gaps) && (
         <fieldset className="cmd-segmented cmd-capacity-tabs">
           <legend className="cmd-visually-hidden">Week ahead</legend>
-          <button type="button" aria-pressed={model === 'pace'} onClick={() => setModel('pace')}>
+          {/* Pressed is the forecast shown: last week's falls back to the pace when it goes. */}
+          <button type="button" aria-pressed={!likeLastWeek} onClick={() => setModel('pace')}>
             Current pace
           </button>
           <button
             type="button"
-            aria-pressed={model === 'lastWeek'}
+            aria-pressed={likeLastWeek}
             disabled={lastWeekGaps === null}
             title={lastWeekGaps === null ? "Waiting for last week's readings" : undefined}
             onClick={() => setModel('lastWeek')}
@@ -280,7 +281,7 @@ export function ForecastHistory(props: {
         charts.map((s) => (
           <LineChart
             key={s.key}
-            title={`${s.key === 'wasted' ? 'Wasted at resets' : 'Clipped'}${
+            title={`${s.key === 'wasted' ? 'Wasted at resets' : 'Shortfall'}${
               ahead === null
                 ? ''
                 : ` · ${asPercent(s.key === 'wasted' ? ahead.wasted : ahead.clipped)} ahead`
@@ -311,10 +312,10 @@ export function ForecastHistory(props: {
         </ul>
       )}
       <p className="cmd-capacity-note">
-        Wasted: each reset's unused share, measured before now, forecast after · clipped: before
-        now, each hour's forecast of its next week; after, what is still to come · like last week:
-        last week's use replayed hour by hour, short where it ran out · 100% is one subscription's
-        week
+        Wasted: each reset's unused share, measured before now, forecast after · shortfall: demand
+        no subscription could take; before now, each hour's forecast of its next week, after, what
+        is still to come · like last week: last week's use replayed hour by hour, low where it ran
+        out · 100% is one subscription's week
       </p>
     </section>
   )
