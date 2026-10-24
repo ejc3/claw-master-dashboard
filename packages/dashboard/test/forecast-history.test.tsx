@@ -139,8 +139,8 @@ describe('ForecastHistory', () => {
     const tables = page.tables()
     expect(tables).toHaveLength(2)
     for (const rows of tables) {
-      // Every hour from a week before to a week after, and the clock between them.
-      expect(rows).toHaveLength(2 * 168 + 1 + 1)
+      // Exactly a week either side of the clock, the clock, and every hour between.
+      expect(rows).toHaveLength(2 * 168 + 3)
     }
     // Newest first: a running total never falls going back up the table's rows reversed.
     const blocked = (tables[1] ?? []).map((r) => Number.parseFloat(r[1] ?? '0')).reverse()
@@ -202,7 +202,7 @@ describe('ForecastHistory', () => {
     expect(page.container.querySelector('figcaption')?.textContent).toBe(
       'Wasted at resets · 40% next week',
     )
-    expect(page.tables().at(-1)).toHaveLength(2 * 168 + 1 + 1)
+    expect(page.tables().at(-1)).toHaveLength(2 * 168 + 3)
   })
 
   it('switches the week ahead to last week replayed, once last week is in', async () => {
@@ -253,5 +253,19 @@ describe('ForecastHistory', () => {
     await page.settle()
     expect(pressed('Current pace')).toBe('true')
     expect(pressed('Like last week')).toBe('false')
+  })
+
+  it('counts the week ahead to its very end: a late reset, and a gap the whole week', async () => {
+    const base = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    const page = mount({
+      ...base,
+      gaps: [{ start: T0, end: null, endsWith: null }],
+      unusedAtReset: [{ profile: 'a', at: T0 + WEEK_MS - 60_000, unused: 0.5 }],
+    })
+    page.render(T0)
+    await page.settle()
+    const captions = [...page.container.querySelectorAll('figcaption')].map((f) => f.textContent)
+    expect(captions[0]).toMatch(/· 50% next week$/)
+    expect(captions[1]).toMatch(/· 168h next week$/)
   })
 })

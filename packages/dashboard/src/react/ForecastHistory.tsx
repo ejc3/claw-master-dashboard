@@ -107,19 +107,21 @@ export function ForecastHistory(props: {
 
   // The two weeks around now, hour by hour, and the forecast's clock between them.
   const clock = shown?.clock ?? now
+  // Exactly a week either side, so nothing at either end is rounded away; on the hour between.
   const times = useMemo(() => {
-    const hour = Math.floor(clock / HOUR_MS) * HOUR_MS
-    const grid: EpochMs[] = []
-    for (let t = hour - WEEK_MS; t <= hour + WEEK_MS; t += HOUR_MS) grid.push(t)
-    if (!grid.includes(clock)) grid.push(clock)
-    return grid.sort((a, b) => a - b)
+    const grid = new Set<EpochMs>([clock - WEEK_MS, clock, clock + WEEK_MS])
+    const first = Math.ceil((clock - WEEK_MS) / HOUR_MS) * HOUR_MS
+    for (let t = first; t < clock + WEEK_MS; t += HOUR_MS) grid.add(t)
+    return [...grid].sort((a, b) => a - b)
   }, [clock])
 
   // Before now, what the readings show; after it, what the chosen forecast expects.
   const past = useMemo(() => {
     if (weeklyUsed === null || weeklyResets === null || fiveUsed === null) return null
     const from = times[0] ?? clock
-    const end = Math.min(weeklyUsed.end, weeklyResets.end, fiveUsed.end, clock)
+    // Up to the forecast's clock, where the forecast takes over: the last readings stand until
+    // then (measuredBlocked), so no minutes fall between the two.
+    const end = clock
     const history = {
       stepMs: READINGS_STEP_MS,
       weeklyUsed: weeklyUsed.series,

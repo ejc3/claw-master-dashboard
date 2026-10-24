@@ -111,33 +111,57 @@ export function replayWeekPerWindow(
 /** A share this close to full is full: what the poll reports for a window that is used up. */
 const FULL_READING = 1 - 1e-9
 
+/** How long a reading stands for its subscription when the next is missing (a few missed polls). */
+const READING_HOLDS_MS = 30 * 60_000
+
+/** The latest point at or before `t` and no older than READING_HOLDS_MS, of points in time order. */
+function readingAt(points: Array<[EpochMs, number]>, t: EpochMs): number | undefined {
+  let lo = 0
+  let hi = points.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if ((points[mid]?.[0] ?? 0) <= t) lo = mid + 1
+    else hi = mid
+  }
+  const p = points[lo - 1]
+  return p === undefined || p[0] < t - READING_HOLDS_MS || !Number.isFinite(p[1]) ? undefined : p[1]
+}
+
 /**
  * When the pool had no tokens in [from, to), measured from the readings: each step at which every
- * subscription read then was out of its week or of its 5-hour window, joined into spans. A step
- * with no subscription read is not counted either way. A step's reading is its highest, so a
- * window that reset within the step counts that step as out.
+ * subscription read in the last half hour was out of its week or of its 5-hour window, joined into
+ * spans. A subscription's last reading stands until the next (a missing step does not take it out
+ * of the pool), and the last step's state until `to`, for at most half an hour. A step with no
+ * subscription read is not counted either way. A step's reading is its highest, so a window that
+ * reset within the step counts that step as out.
  */
 export function measuredBlocked(
   history: Pick<QuotaHistory, 'stepMs' | 'weeklyUsed' | 'fiveHourUsed'>,
   from: EpochMs,
   to: EpochMs,
 ): Array<{ start: EpochMs; end: EpochMs }> {
-  const five = new Map(history.fiveHourUsed.map((s) => [s.key, new Map(s.points)]))
-  const out = new Map<EpochMs, boolean>()
+  const five = new Map(history.fiveHourUsed.map((s) => [s.key, s.points]))
+  const steps = new Set<EpochMs>()
   for (const s of history.weeklyUsed) {
-    for (const [t, week] of s.points) {
-      if (t < from || t >= to || !Number.isFinite(week)) continue
-      const window = five.get(s.key)?.get(t)
-      const full = week >= FULL_READING || (window !== undefined && window >= FULL_READING)
-      out.set(t, (out.get(t) ?? true) && full)
-    }
+    for (const [t] of s.points) if (t >= from && t < to) steps.add(t)
   }
+  const times = [...steps].sort((a, b) => a - b)
   const spans: Array<{ start: EpochMs; end: EpochMs }> = []
-  for (const t of [...out.keys()].sort((a, b) => a - b)) {
-    if (!out.get(t)) continue
+  for (const [i, t] of times.entries()) {
+    let read = 0
+    let full = true
+    for (const s of history.weeklyUsed) {
+      const week = readingAt(s.points, t)
+      if (week === undefined) continue
+      read++
+      const window = readingAt(five.get(s.key) ?? [], t)
+      if (week < FULL_READING && (window === undefined || window < FULL_READING)) full = false
+    }
+    if (read === 0 || !full) continue
+    const end = Math.min(times[i + 1] ?? to, t + READING_HOLDS_MS, to)
     const last = spans.at(-1)
-    if (last !== undefined && last.end === t) last.end = t + history.stepMs
-    else spans.push({ start: t, end: Math.min(t + history.stepMs, to) })
+    if (last !== undefined && last.end === t) last.end = end
+    else spans.push({ start: t, end })
   }
   return spans
 }

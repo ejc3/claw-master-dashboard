@@ -206,3 +206,59 @@ describe('running totals', () => {
     expect(points.map(([, v]) => v)).toEqual([0, 0.5, 0.5, 1.5])
   })
 })
+
+describe('measuredBlocked at the edges', () => {
+  const at = (key: string, steps: Array<[number, number]>) => ({
+    key,
+    points: steps.map(([i, v]): [EpochMs, number] => [T + i * STEP, v]),
+  })
+  it('keeps a subscription in the pool across a missing reading', () => {
+    const spans = measuredBlocked(
+      {
+        stepMs: STEP,
+        weeklyUsed: [
+          at('a', [
+            [0, 1],
+            [1, 1],
+            [2, 1],
+            [3, 1],
+          ]),
+          // b is not read at the third step: its last reading, 20%, still stands.
+          at('b', [
+            [0, 0.2],
+            [1, 0.2],
+            [3, 0.2],
+          ]),
+        ],
+        fiveHourUsed: [
+          at('b', [
+            [0, 0.2],
+            [1, 0.2],
+            [2, 0.2],
+            [3, 0.2],
+          ]),
+        ],
+      },
+      T,
+      T + 4 * STEP,
+    )
+    expect(spans).toEqual([])
+  })
+  it('ends a span at the cutoff, and holds the last state up to it for half an hour', () => {
+    const full = {
+      stepMs: STEP,
+      weeklyUsed: [
+        at('a', [
+          [0, 1],
+          [1, 1],
+          [2, 1],
+        ]),
+      ],
+      fiveHourUsed: [],
+    }
+    expect(measuredBlocked(full, T, T + 25 * 60_000)).toEqual([{ start: T, end: T + 25 * 60_000 }])
+    expect(measuredBlocked(full, T, T + 35 * 60_000)).toEqual([{ start: T, end: T + 35 * 60_000 }])
+    // Past half an hour without a reading, it is not known.
+    expect(measuredBlocked(full, T, T + 2 * HOUR_MS)).toEqual([{ start: T, end: T + 50 * 60_000 }])
+  })
+})
