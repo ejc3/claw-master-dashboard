@@ -109,6 +109,19 @@ function mount(gaps: PoolGaps | null = null) {
   }
 }
 
+/** One subscription half used, resetting 10 hours after `at`: at 1% an hour, 40% thrown away. */
+function halfUsed(at: number): ProfileStatus {
+  return {
+    profile: 'a',
+    band: 'ok',
+    weekly: { usedFraction: 0.5, resetsAt: at + 10 * HOUR_MS, lengthMs: WEEK_MS },
+    fiveHour: null,
+    rateLimitedUntil: null,
+    tokenExpiresAt: null,
+    latencyMs: { p50: null, p95: null, p99: null },
+  }
+}
+
 describe('ForecastHistory', () => {
   it('charts an hour of every hour of the last week', async () => {
     const page = mount()
@@ -165,5 +178,29 @@ describe('ForecastHistory', () => {
     const now = wasteAndClipping(gaps)
     expect(now.clippedHours).toBeGreaterThan(50)
     expect(clipped?.[168]?.[1]).toBe(`${Math.round(now.clipped * 100)}%`)
+  })
+
+  it('takes the forecast now at its own clock over a rebuilt hour at the same time', async () => {
+    const onHour = Date.UTC(2026, 9, 20, 12)
+    const gaps = poolGaps([halfUsed(onHour)], onHour, new Map([['a', 0.01]]), onHour)
+    const page = mount(gaps)
+    page.render(T0)
+    await page.settle()
+    const [wasted] = page.tables()
+    // 168 rebuilt hours before 12:00, then 12:00 and every hour of the week ahead.
+    expect(wasted).toHaveLength(168 + 1 + 168)
+    expect(wasted?.[168]?.[1]).toBe(`${Math.round(wasteAndClipping(gaps).wasted * 100)}%`)
+  })
+
+  it("shows the week ahead and its title's value when last week's readings never come", async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    const page = mount(gaps)
+    page.hold()
+    page.render(T0)
+    await page.settle()
+    expect(page.container.querySelector('figcaption')?.textContent).toBe(
+      'Wasted at resets · 40% ahead',
+    )
+    expect(page.tables()[0]).toHaveLength(1 + 168)
   })
 })

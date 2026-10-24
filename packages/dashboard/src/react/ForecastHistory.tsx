@@ -99,9 +99,8 @@ export function ForecastHistory(props: {
   // week ahead as the forecast now sees what is still to come from it, so the steps down show
   // when the waste and the clipping fall.
   const series: ChartSeries[] = useMemo(() => {
-    if (points === null) return []
-    const made = [...points.values()].filter((p): p is HindcastPoint => p !== null)
-    const lastMade = made.at(-1)?.at ?? Number.NEGATIVE_INFINITY
+    // The week ahead does not wait on last week's readings, nor fail with them.
+    const made = [...(points?.values() ?? [])].filter((p): p is HindcastPoint => p !== null)
     const ahead: HindcastPoint[] = []
     if (gaps !== null && gaps.lasts !== 'unknown' && gaps.lasts !== 'logins') {
       ahead.push(wasteAndClipping(gaps))
@@ -110,7 +109,10 @@ export function ForecastHistory(props: {
         ahead.push(wasteAndClipping(gaps, t))
       }
     }
-    const all = [...made, ...ahead.filter((p) => p.at > lastMade)]
+    // The forecast now, from its own clock on: a rebuilt hour at or after it gives way.
+    const from = ahead[0]?.at ?? Number.POSITIVE_INFINITY
+    const all = [...made.filter((p) => p.at < from), ...ahead]
+    if (all.length === 0) return []
     return [
       {
         key: 'wasted',
