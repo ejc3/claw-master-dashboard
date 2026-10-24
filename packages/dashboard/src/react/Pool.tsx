@@ -529,7 +529,9 @@ export function adviceLine(
     })
     const list =
       each.length <= 1 ? each.join('') : `${each.slice(0, -1).join(', ')} and ${each.at(-1)}`
-    return `Could cancel, keeping tokens ${formatPercent(advice.after)} of the week: ${list}`
+    // The long run: at this pace fewer would do, whatever the next week's resets throw away.
+    const cover = advice.of - advice.remove.length
+    return `At this pace about ${cover} of ${advice.of} subscriptions cover the work: could cancel ${list}`
   }
   return null
 }

@@ -154,6 +154,7 @@ describe('adviceLine', () => {
   it('says which could be cancelled, after their weeks reset', () => {
     const remove = {
       kind: 'remove' as const,
+      of: 5,
       remove: [
         { profile: 'claude-a', after: NOW + 3 * H },
         { profile: 'claude-b', after: NOW + 5 * H },
@@ -162,10 +163,10 @@ describe('adviceLine', () => {
       after: 0.97,
     }
     expect(adviceLine(remove, names, NOW, clock)).toBe(
-      'Could cancel, keeping tokens 97% of the week: a after T+3h and b after T+5h',
+      'At this pace about 3 of 5 subscriptions cover the work: could cancel a after T+3h and b after T+5h',
     )
     expect(adviceLine({ ...remove, remove: remove.remove.slice(0, 1) }, names, NOW, null)).toBe(
-      'Could cancel, keeping tokens 97% of the week: a in 3h',
+      'At this pace about 4 of 5 subscriptions cover the work: could cancel a in 3h',
     )
   })
   it('says nothing when the pool is right as it is or the forecast cannot tell', () => {

@@ -62,6 +62,8 @@ export type CapacityAdvice =
       kind: 'remove'
       /** Subscriptions the pool can do without and still cover COVERAGE_TARGET of the week. */
       remove: Array<{ profile: string; after: EpochMs | null }>
+      /** How many subscriptions the pool has now. */
+      of: number
       now: number
       after: number
     }
@@ -137,5 +139,5 @@ export function capacityAdvice(
   }
   return remove.length === 0
     ? { kind: 'enough', now: current }
-    : { kind: 'remove', remove, now: current, after }
+    : { kind: 'remove', remove, of: profiles.length, now: current, after }
 }
