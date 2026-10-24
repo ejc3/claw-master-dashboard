@@ -76,6 +76,35 @@ describe('profilesAt', () => {
     expect(profilesAt(history, T)[0]?.weekly.resetsAt).toBe(T - STEP + HOUR_MS)
   })
 
+  it("counts a window that reset inside the reading's bucket as unused", () => {
+    // The week reset 5 minutes into the last bucket: its highest share is the old week's 100%,
+    // its countdown already the new week's. So for a 5-hour window.
+    const reset = T - 5 * 60_000
+    const reread: QuotaHistory = {
+      stepMs: STEP,
+      weeklyUsed: [{ key: 'a', points: [[T - STEP, 1]] }],
+      weeklyResetsInSeconds: [{ key: 'a', points: [[T - STEP, (reset + WEEK_MS - T) / 1000]] }],
+      fiveHourUsed: [{ key: 'a', points: [[T - STEP, 1]] }],
+      fiveHourResetsInSeconds: [
+        { key: 'a', points: [[T - STEP, (reset + FIVE_HOURS_MS - T) / 1000]] },
+      ],
+    }
+    const [a] = profilesAt(reread, T)
+    expect(a?.weekly.usedFraction).toBe(0)
+    expect(a?.fiveHour?.usedFraction).toBe(0)
+    // A window that began before the bucket keeps its reading.
+    const [b] = profilesAt(
+      {
+        ...reread,
+        weeklyResetsInSeconds: [
+          { key: 'a', points: [[T - STEP, (T - 3 * STEP + WEEK_MS - T) / 1000]] },
+        ],
+      },
+      T,
+    )
+    expect(b?.weekly.usedFraction).toBe(1)
+  })
+
   it('leaves out a subscription whose weekly reading is over half an hour old', () => {
     expect(profilesAt(history, T).map((p) => p.profile)).toEqual(['a'])
   })

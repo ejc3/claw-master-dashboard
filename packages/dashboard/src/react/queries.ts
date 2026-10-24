@@ -99,6 +99,7 @@ export const SPLITS: ReadonlyArray<{
 export const KPI_STEP_SECONDS = 300
 const KPI_STEP_MS = KPI_STEP_SECONDS * 1000
 const READINGS_STEP_SECONDS = 600
+export const READINGS_STEP_MS = READINGS_STEP_SECONDS * 1000
 
 /** Step-aligned, so every viewer and every refresh within a step asks for the same range. */
 export function rangeEnding(now: EpochMs, ms: number, stepSeconds: number): TimeRange {

@@ -286,10 +286,6 @@
     min-width: 0;
   }
 
-  .cmd-forecast-history .cmd-capacity-note {
-    padding: 0 16px;
-  }
-
   .cmd-capacity-weekly {
     display: grid;
     gap: 6px;
@@ -306,6 +302,10 @@
     margin: 0;
     font-size: 0.75rem;
     color: var(--cmd-ink-3);
+  }
+
+  .cmd-forecast-history .cmd-capacity-note {
+    padding: 0 16px;
   }
 
   /* The answer to "when do I run out": the largest words on the page. */

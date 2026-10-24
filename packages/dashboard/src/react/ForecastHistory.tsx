@@ -8,9 +8,9 @@ import {
   type QuotaHistory,
   type Series,
 } from '../core'
-import { useLastReady, useReadings } from './hooks'
+import { useReadings } from './hooks'
 import { type ChartSeries, LineChart } from './LineChart'
-import { historyQuery } from './queries'
+import { historyQuery, READINGS_STEP_MS } from './queries'
 
 const asPercent = (v: number) => `${Math.round(v * 100)}%`
 
@@ -22,39 +22,63 @@ const UNSETTLED_MS = 2 * HOUR_MS
  * weekly resets would throw away, and how much demand no subscription could take. Rebuilt from
  * the quota readings, so it shows how the pace and the pool moved the outlook between the two.
  */
+/**
+ * One of the readings the forecasts are rebuilt from, as last answered, with the end of the range
+ * that answer covers: while a moved range loads, the last answer stays, and covers less.
+ */
+function useHistory(
+  apiBase: string,
+  now: EpochMs,
+  metric: Parameters<typeof historyQuery>[1],
+): { series: Series[]; end: EpochMs } | null {
+  const query = historyQuery(now, metric)
+  const loaded = useReadings(apiBase, query)
+  // The same object until a new answer comes, so what is worked out from it is not redone on
+  // every render.
+  const kept = useRef<{ series: Series[]; end: EpochMs } | null>(null)
+  if (loaded.state === 'ready') {
+    const end = loaded.range?.end ?? query.range.end
+    if (kept.current?.series !== loaded.data || kept.current.end !== end) {
+      kept.current = { series: loaded.data, end }
+    }
+  }
+  return kept.current
+}
+
+/**
+ * What the forecast said, hour by hour over the last week, about the week ahead of it: how much
+ * weekly resets would throw away, and how much demand no subscription could take. Rebuilt from
+ * the quota readings, so it shows how the pace and the pool moved the outlook between the two.
+ */
 export function ForecastHistory(props: { apiBase: string; now: EpochMs }) {
   const { apiBase, now } = props
-  const weeklyUsed = useLastReady(useReadings(apiBase, historyQuery(now, 'weeklyUsed')))
-  const weeklyResets = useLastReady(
-    useReadings(apiBase, historyQuery(now, 'weeklyResetsInSeconds')),
-  )
-  const fiveUsed = useLastReady(useReadings(apiBase, historyQuery(now, 'fiveHourUsed')))
-  const fiveResets = useLastReady(
-    useReadings(apiBase, historyQuery(now, 'fiveHourResetsInSeconds')),
-  )
-  const query = historyQuery(now, 'weeklyUsed')
-  const end = query.range.end
+  const weeklyUsed = useHistory(apiBase, now, 'weeklyUsed')
+  const weeklyResets = useHistory(apiBase, now, 'weeklyResetsInSeconds')
+  const fiveUsed = useHistory(apiBase, now, 'fiveHourUsed')
+  const fiveResets = useHistory(apiBase, now, 'fiveHourResetsInSeconds')
   const [points, setPoints] = useState<Map<EpochMs, HindcastPoint | null> | null>(null)
   const kept = useRef<Map<EpochMs, HindcastPoint | null>>(new Map())
   useEffect(() => {
     if (weeklyUsed === null || weeklyResets === null || fiveUsed === null || fiveResets === null)
       return
     // A simulation a week long for each hour: after the page is up, and again only for the hours
-    // new readings can change.
+    // new readings can change. Only to the end all four answers cover: an hour past it would be
+    // worked out without its readings, and kept so once it settles.
+    const end = Math.min(weeklyUsed.end, weeklyResets.end, fiveUsed.end, fiveResets.end)
     const timer = setTimeout(() => {
       const history: QuotaHistory = {
-        stepMs: query.stepSeconds * 1000,
-        weeklyUsed: weeklyUsed as Series[],
-        weeklyResetsInSeconds: weeklyResets as Series[],
-        fiveHourUsed: fiveUsed as Series[],
-        fiveHourResetsInSeconds: fiveResets as Series[],
+        stepMs: READINGS_STEP_MS,
+        weeklyUsed: weeklyUsed.series,
+        weeklyResetsInSeconds: weeklyResets.series,
+        fiveHourUsed: fiveUsed.series,
+        fiveHourResetsInSeconds: fiveResets.series,
       }
       const next = extendHindcast(kept.current, history, hindcastTimes(end), end - UNSETTLED_MS)
       kept.current = next
       setPoints(next)
     }, 0)
     return () => clearTimeout(timer)
-  }, [weeklyUsed, weeklyResets, fiveUsed, fiveResets, end, query.stepSeconds])
+  }, [weeklyUsed, weeklyResets, fiveUsed, fiveResets])
 
   const series: ChartSeries[] = useMemo(() => {
     if (points === null) return []

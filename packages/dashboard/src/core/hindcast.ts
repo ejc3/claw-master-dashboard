@@ -12,6 +12,7 @@ import {
   FIVE_HOURS_MS,
   HOUR_MS,
   type ProfileStatus,
+  type QuotaWindow,
   type Series,
   WEEK_MS,
 } from './types'
@@ -73,8 +74,19 @@ export function profilesAt(history: QuotaHistory, t: EpochMs): ProfileStatus[] {
   const weeklyResets = byKey(history.weeklyResetsInSeconds)
   const fiveUsed = byKey(history.fiveHourUsed)
   const fiveResets = byKey(history.fiveHourResetsInSeconds)
-  const resetAt = (r: [EpochMs, number] | undefined) =>
-    r === undefined ? null : r[0] + Math.max(0, r[1]) * 1000
+  // A countdown is read from its bucket's start, so the window it names began up to a step before
+  // the time it gives. One that may have begun after the used share's bucket started makes that
+  // share (its bucket's highest) possibly the window before's, a full one at a reset: the new
+  // window has had at most a step or two of use, so it counts as unused.
+  const window = (
+    used: [EpochMs, number],
+    reset: [EpochMs, number] | undefined,
+    lengthMs: number,
+  ): QuotaWindow => {
+    const resetsAt = reset === undefined || reset[1] <= 0 ? null : reset[0] + reset[1] * 1000
+    const begunSince = resetsAt !== null && resetsAt - lengthMs > used[0] - stepMs
+    return { usedFraction: begunSince ? 0 : used[1], resetsAt, lengthMs }
+  }
   const profiles: ProfileStatus[] = []
   for (const s of history.weeklyUsed) {
     const used = readAt(s.points, t, stepMs, WEEKLY_LOOKBACK_MS)
@@ -85,15 +97,8 @@ export function profilesAt(history: QuotaHistory, t: EpochMs): ProfileStatus[] {
     profiles.push({
       profile: s.key,
       band: 'ok',
-      weekly: {
-        usedFraction: used[1],
-        resetsAt: weeklyReset === undefined || weeklyReset[1] <= 0 ? null : resetAt(weeklyReset),
-        lengthMs: WEEK_MS,
-      },
-      fiveHour:
-        five === undefined
-          ? null
-          : { usedFraction: five[1], resetsAt: resetAt(fiveReset), lengthMs: FIVE_HOURS_MS },
+      weekly: window(used, weeklyReset, WEEK_MS),
+      fiveHour: five === undefined ? null : window(five, fiveReset, FIVE_HOURS_MS),
       rateLimitedUntil: null,
       tokenExpiresAt: null,
       latencyMs: { p50: null, p95: null, p99: null },
