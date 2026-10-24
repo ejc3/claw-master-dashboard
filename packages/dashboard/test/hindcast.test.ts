@@ -8,12 +8,17 @@ import {
   HOUR_MS,
   hindcast,
   hindcastTimes,
+  measuredResets,
   type PoolGaps,
+  type ProfileStatus,
+  poolGaps,
   profilesAt,
   type QuotaHistory,
+  resetSpikes,
   type Series,
   WEEK_MS,
   wasteAndClipping,
+  weekAgoPace,
 } from '../src/core/index'
 
 const T = Date.UTC(2026, 9, 20, 12)
@@ -291,5 +296,106 @@ describe('hindcastTimes', () => {
     expect(times).toHaveLength(169)
     expect(times[0]).toBe(T - WEEK_MS)
     expect(times.at(-1)).toBe(T)
+  })
+})
+
+describe('measuredResets', () => {
+  // A week resetting at T + 5 minutes: its countdown, read every step, names the next week after.
+  const reset = T + 5 * 60_000
+  const countdown = every('a', T - HOUR_MS, T + HOUR_MS, (t) =>
+    t < reset - STEP + 1 ? (reset - t) / 1000 : (reset + WEEK_MS - t) / 1000,
+  )
+  const history = (usedBefore: number) => ({
+    stepMs: STEP,
+    weeklyUsed: [every('a', T - HOUR_MS, T + HOUR_MS, (t) => (t <= reset ? usedBefore : 0.01))],
+    weeklyResetsInSeconds: [countdown],
+  })
+
+  it('finds the reset and what the week before it left', () => {
+    expect(measuredResets(history(0.7), T - HOUR_MS, T + HOUR_MS)).toEqual([
+      { profile: 'a', at: reset, unused: expect.closeTo(0.3, 9) },
+    ])
+  })
+
+  it('counts a week used up as nothing thrown away', () => {
+    expect(measuredResets(history(1), T - HOUR_MS, T + HOUR_MS)[0]?.unused).toBe(0)
+  })
+
+  it('keeps to the span asked for, and needs a reading of the share before the reset', () => {
+    expect(measuredResets(history(0.7), reset + 1, T + HOUR_MS)).toEqual([])
+    expect(measuredResets({ ...history(0.7), weeklyUsed: [] }, T - HOUR_MS, T + HOUR_MS)).toEqual(
+      [],
+    )
+  })
+})
+
+describe('resetSpikes', () => {
+  it('is nothing at each time and a spike at each reset, same-moment resets added', () => {
+    const points = resetSpikes(
+      [
+        { at: T + 30 * 60_000, unused: 0.25 },
+        { at: T + 30 * 60_000, unused: 0.5 },
+      ],
+      [T, T + HOUR_MS],
+    )
+    expect(points).toEqual([
+      [T, 0],
+      [T + 29 * 60_000, 0],
+      [T + 30 * 60_000, 0.75],
+      [T + 31 * 60_000, 0],
+      [T + HOUR_MS, 0],
+    ])
+  })
+
+  it('lets a time within the spike give way', () => {
+    expect(
+      resetSpikes([{ at: T, unused: 0.5 }], [T, T + HOUR_MS]).filter(([t]) => t === T),
+    ).toEqual([[T, 0.5]])
+  })
+})
+
+describe('weekAgoPace', () => {
+  it("is the pool's use in the same hour a week before, the 5-hour pace through the ratio", () => {
+    const start = T - WEEK_MS
+    // a uses 2% an hour, b 1% an hour, through the hour a week before T.
+    const used = (key: string, perHour: number) =>
+      every(
+        key,
+        start - HOUR_MS,
+        start + 2 * HOUR_MS,
+        (t) => 0.2 + ((t - start) / HOUR_MS) * perHour,
+      )
+    const paceAt = weekAgoPace([used('a', 0.02), used('b', 0.01)], 0.25)
+    const pace = paceAt(T + 30 * 60_000)
+    expect(pace.weekly).toBeCloseTo(0.03, 6)
+    expect(pace.fiveHour).toBeCloseTo(pace.weekly / 0.25, 6)
+    // No readings that hour: nothing used.
+    expect(paceAt(T + 5 * HOUR_MS)).toEqual({ weekly: 0, fiveHour: 0 })
+  })
+})
+
+describe('poolGaps at a pace that changes', () => {
+  const a: ProfileStatus = {
+    profile: 'a',
+    band: 'ok',
+    weekly: { usedFraction: 0.5, resetsAt: T + 100 * HOUR_MS, lengthMs: WEEK_MS },
+    fiveHour: null,
+    rateLimitedUntil: null,
+    tokenExpiresAt: null,
+    latencyMs: { p50: null, p95: null, p99: null },
+  }
+  const pace = { weekly: 0, fiveHour: 0 }
+
+  it('uses nothing while the pattern is idle and runs out once it picks up', () => {
+    // Idle for a day, then 5% an hour: the half week left lasts 10 hours.
+    const paceAt = (t: EpochMs) => ({ weekly: t < T + 24 * HOUR_MS ? 0 : 0.05, fiveHour: 0 })
+    const gaps = poolGaps([a], T, new Map(), T, false, pace, paceAt)
+    expect(gaps.gaps[0]?.start).toBeGreaterThanOrEqual(T + 33 * HOUR_MS)
+    expect(gaps.gaps[0]?.start).toBeLessThanOrEqual(T + 35 * HOUR_MS)
+    // The clipping follows the pattern's pace through the gap: 5% an hour until the reset.
+    const point = wasteAndClipping(gaps, T, paceAt)
+    expect(point.clipped).toBeCloseTo(point.clippedHours * 0.05, 2)
+    // One pace of nothing throughout: no gap.
+    expect(poolGaps([a], T, new Map(), T, false, pace).gaps).toEqual([])
   })
 })

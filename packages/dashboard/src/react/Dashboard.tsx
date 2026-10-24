@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type AlarmStatus,
   burnRate,
@@ -14,6 +14,7 @@ import {
   fromFirstBucket,
   HOUR_MS,
   hasHeadroom,
+  type PoolGaps,
   type ProfileStatus,
   poolGaps,
   poolPace,
@@ -356,6 +357,20 @@ function DashboardBody(props: DashboardProps) {
         : poolGaps(forecastable, forecastFrom, smoothed, gapsAt, false, pace),
     [forecastable, forecastFrom, smoothed, gapsAt, pace],
   )
+  // The same forecast at a pace that changes hour by hour (the waste section's like last week).
+  const forecastWith = useCallback(
+    (paceAt: (t: EpochMs) => PoolGaps['pace']) =>
+      poolGaps(
+        forecastable ?? [],
+        forecastFrom,
+        smoothed,
+        gapsAt,
+        false,
+        pace ?? undefined,
+        paceAt,
+      ),
+    [forecastable, forecastFrom, smoothed, gapsAt, pace],
+  )
   // The same with no more use: what is left only comes back as limits reset.
   const gapsIfStopped = useMemo(
     () =>
@@ -511,6 +526,7 @@ function DashboardBody(props: DashboardProps) {
           gaps={gaps}
           advice={advice}
           profiles={profilesNow}
+          forecastWith={forecastWith}
         />
 
         <section className="cmd-kpis" aria-label="Traffic">

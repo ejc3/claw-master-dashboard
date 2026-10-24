@@ -566,6 +566,11 @@ export function poolGaps(
    * one fewer (capacityAdvice) keeps the people's pace, which no subscription change alters.
    */
   pace?: PoolGaps['pace'],
+  /**
+   * The pace at each moment instead of one pace throughout, for a forecast that follows a pattern
+   * (last week's, hour by hour). `pace` is still what the result reports.
+   */
+  paceAt?: (t: EpochMs) => PoolGaps['pace'],
 ): PoolGaps {
   const slots: JointSlot[] = []
   let weeklyDemand = 0
@@ -673,9 +678,10 @@ export function poolGaps(
   }
 
   const step = GAPS_STEP_MS
-  const perWeek = (weeklyDemand / HOUR_MS) * step
-  const perFive = (fiveDemand / HOUR_MS) * step
-  const idle = perWeek <= 0 && perFive <= 0
+  let perWeek = (weeklyDemand / HOUR_MS) * step
+  let perFive = (fiveDemand / HOUR_MS) * step
+  // A pattern may pick up after an idle stretch, so only one pace throughout ends early when idle.
+  const idle = paceAt === undefined && perWeek <= 0 && perFive <= 0
   const open = (s: JointSlot, t: EpochMs) =>
     !isFull(s.weekly) && !isFull(s.five) && (s.limitedUntil === null || s.limitedUntil <= t)
   const gaps: PoolGap[] = []
@@ -716,6 +722,11 @@ export function poolGaps(
       continue
     }
     if (idle) break
+    if (paceAt !== undefined && !noMoreUse) {
+      const at = paceAt(t)
+      perWeek = (rate(at.weekly) / HOUR_MS) * step
+      perFive = (rate(at.fiveHour) / HOUR_MS) * step
+    }
     // In claude-master's order as of this step; what one cannot take goes to the next. `left` is
     // the share of this step's work still to place; each subscription takes what its fuller
     // window allows.

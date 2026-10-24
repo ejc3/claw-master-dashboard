@@ -52,7 +52,10 @@ afterEach(() => {
  * unanswered until it is let go, as a page coming back from the background waits on its moved
  * ranges.
  */
-function mount(gaps: PoolGaps | null = null) {
+function mount(
+  gaps: PoolGaps | null = null,
+  forecastWith?: (paceAt: (t: number) => PoolGaps['pace']) => PoolGaps,
+) {
   let clock = T0
   const source = createDemoSource({ now: () => clock })
   const { GET } = createDashboardHandler({ source: () => source, authorize: () => true })
@@ -70,7 +73,13 @@ function mount(gaps: PoolGaps | null = null) {
     act(() =>
       root.render(
         <PollStoreContext.Provider value={store}>
-          <ForecastHistory apiBase="/api" now={now} gaps={gaps} profiles={null} />
+          <ForecastHistory
+            apiBase="/api"
+            now={now}
+            gaps={gaps}
+            profiles={null}
+            {...(forecastWith === undefined ? {} : { forecastWith })}
+          />
         </PollStoreContext.Provider>,
       ),
     )
@@ -88,7 +97,8 @@ function mount(gaps: PoolGaps | null = null) {
       ),
     )
   }
-  const rows = () => tables()[0]?.length ?? 0
+  // The clipping chart's rows: one an hour (the waste chart adds its resets' spikes).
+  const rows = () => tables().at(-1)?.length ?? 0
   return {
     render,
     settle,
@@ -168,16 +178,20 @@ describe('ForecastHistory', () => {
     expect(page.container.querySelectorAll('.cmd-band')).toHaveLength(2 * gaps.gaps.length)
     const [wasted, clipped] = page.tables()
     // 169 hours back, the forecast's own clock, and every hour of the week ahead after it.
-    expect(wasted).toHaveLength(169 + 1 + 168)
     expect(clipped).toHaveLength(169 + 1 + 168)
-    // Newest first: the last hour ahead has nothing still to come, the clock's row the 40%.
-    expect(wasted?.[0]?.[1]).toBe('0%')
     expect(clipped?.[0]?.[1]).toBe('0%')
-    expect(wasted?.[168]?.[1]).toBe('40%')
     // At 1% an hour the new week runs out about 100 hours after the reset: that gap is clipped.
     const now = wasteAndClipping(gaps)
     expect(now.clippedHours).toBeGreaterThan(50)
     expect(clipped?.[168]?.[1]).toBe(`${Math.round(now.clipped * 100)}%`)
+    // The waste is a spike at the reset, 10 hours on, and nothing either side of it.
+    const spike = wasted?.findIndex((row) => row[1] === '40%') ?? -1
+    expect(spike).toBeGreaterThan(0)
+    expect(wasted?.[spike - 1]?.[1]).toBe('0%')
+    expect(wasted?.[spike + 1]?.[1]).toBe('0%')
+    expect(page.container.querySelector('figcaption')?.textContent).toMatch(
+      /^Wasted at resets · 40% ahead · \d+% last week$/,
+    )
   })
 
   it('takes the forecast now at its own clock over a rebuilt hour at the same time', async () => {
@@ -186,10 +200,10 @@ describe('ForecastHistory', () => {
     const page = mount(gaps)
     page.render(T0)
     await page.settle()
-    const [wasted] = page.tables()
+    const clipped = page.tables().at(-1)
     // 168 rebuilt hours before 12:00, then 12:00 and every hour of the week ahead.
-    expect(wasted).toHaveLength(168 + 1 + 168)
-    expect(wasted?.[168]?.[1]).toBe(`${Math.round(wasteAndClipping(gaps).wasted * 100)}%`)
+    expect(clipped).toHaveLength(168 + 1 + 168)
+    expect(clipped?.[168]?.[1]).toBe(`${Math.round(wasteAndClipping(gaps).clipped * 100)}%`)
   })
 
   it("shows the week ahead and its title's value when last week's readings never come", async () => {
@@ -201,6 +215,33 @@ describe('ForecastHistory', () => {
     expect(page.container.querySelector('figcaption')?.textContent).toBe(
       'Wasted at resets · 40% ahead',
     )
-    expect(page.tables()[0]).toHaveLength(1 + 168)
+    expect(page.tables().at(-1)).toHaveLength(1 + 168)
+  })
+
+  it('switches the week ahead to last week replayed, once last week is in', async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    const paces: Array<(t: number) => PoolGaps['pace']> = []
+    const replayed: PoolGaps = {
+      ...gaps,
+      unusedAtReset: [{ profile: 'a', at: T0 + 10 * HOUR_MS, unused: 0.9 }],
+    }
+    const page = mount(gaps, (paceAt) => {
+      paces.push(paceAt)
+      return replayed
+    })
+    page.render(T0)
+    await page.settle()
+    const title = () => page.container.querySelector('figcaption')?.textContent ?? ''
+    expect(title()).toMatch(/^Wasted at resets · 40% ahead/)
+    const tab = [...page.container.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Like last week',
+    )
+    expect(tab).toBeDefined()
+    // The pace it was given is last week's, an hour at a time.
+    expect(paces.length).toBeGreaterThan(0)
+    expect(paces.at(-1)?.(T0).weekly).toBeGreaterThanOrEqual(0)
+    act(() => tab?.click())
+    expect(title()).toMatch(/^Wasted at resets · 90% ahead/)
+    expect(page.container.textContent).toContain('Most wasted: a 90%')
   })
 })

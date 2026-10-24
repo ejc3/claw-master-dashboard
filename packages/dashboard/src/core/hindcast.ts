@@ -5,6 +5,7 @@ import {
   poolGaps,
   poolPace,
   poolRates,
+  riseOver,
   WEEKLY_SMOOTHING_MS,
 } from './forecast'
 import {
@@ -117,17 +118,63 @@ export function profilesAt(history: QuotaHistory, t: EpochMs): ProfileStatus[] {
  * throw away, and the demand its gaps leave unserved from then on (gap hours times the weekly
  * pace). At the forecast's own clock, the whole week ahead; later, what is still to come.
  */
-export function wasteAndClipping(gaps: PoolGaps, at: EpochMs = gaps.clock): HindcastPoint {
+export function wasteAndClipping(
+  gaps: PoolGaps,
+  at: EpochMs = gaps.clock,
+  /** The pace the forecast ran at moment by moment, when it was not one pace throughout. */
+  paceAt?: (t: EpochMs) => PoolGaps['pace'],
+): HindcastPoint {
   const end = gaps.clock + GAPS_HORIZON_MS
   let gapMs = 0
-  for (const g of gaps.gaps)
-    gapMs += Math.max(0, Math.min(g.end ?? end, end) - Math.max(g.start, at))
+  let clipped = 0
+  for (const g of gaps.gaps) {
+    const from = Math.max(g.start, at)
+    const to = Math.min(g.end ?? end, end)
+    if (to <= from) continue
+    gapMs += to - from
+    if (paceAt === undefined) continue
+    // The demand turned away, step by step through the gap.
+    for (let t = from; t < to; t += PACE_STEP_MS) {
+      clipped += (paceAt(t).weekly * (Math.min(t + PACE_STEP_MS, to) - t)) / HOUR_MS
+    }
+  }
   const clippedHours = gapMs / HOUR_MS
   return {
     at,
     wasted: gaps.unusedAtReset.reduce((sum, r) => (r.at >= at ? sum + r.unused : sum), 0),
-    clipped: clippedHours * gaps.pace.weekly,
+    clipped: paceAt === undefined ? clippedHours * gaps.pace.weekly : clipped,
     clippedHours,
+  }
+}
+
+/** How finely a pace that changes is summed through a gap. */
+const PACE_STEP_MS = 10 * 60_000
+
+/**
+ * Last week's pace, hour by hour: at any moment, what the pool used of its weekly limits in the
+ * same hour a week before (each subscription's rise in that hour, a reset's fall counted as new
+ * use), and the 5-hour pace that makes through what a full 5-hour window costs of the week. An
+ * hour with no readings used nothing. Hours the pool was out used less than was asked of it.
+ */
+export function weekAgoPace(
+  weeklyUsed: Series[],
+  weekPerWindow: number | null,
+): (t: EpochMs) => PoolGaps['pace'] {
+  const byHour = new Map<EpochMs, number>()
+  const hour = (t: EpochMs) => Math.floor(t / HOUR_MS) * HOUR_MS
+  const hours = new Set<EpochMs>()
+  for (const s of weeklyUsed) for (const [t] of s.points) hours.add(hour(t))
+  for (const h of hours) {
+    let rise = 0
+    for (const s of weeklyUsed) rise += riseOver(s.points, h + HOUR_MS, HOUR_MS, 0)?.rise ?? 0
+    byHour.set(h, rise)
+  }
+  return (t) => {
+    const weekly = byHour.get(hour(t - WEEK_MS)) ?? 0
+    return {
+      weekly,
+      fiveHour: weekPerWindow !== null && weekPerWindow > 0 ? weekly / weekPerWindow : 0,
+    }
   }
 }
 
@@ -189,4 +236,70 @@ export function extendHindcast(
   const worked = hindcast(history, missing)
   for (const [i, t] of missing.entries()) next.set(t, worked[i] ?? null)
   return next
+}
+
+/** A weekly reset and the share of that subscription's week it threw away. */
+export interface ResetWaste {
+  profile: string
+  at: EpochMs
+  unused: number
+}
+
+/** How far before a reset the last used share is looked for. */
+const BEFORE_RESET_MS = 30 * 60_000
+
+/**
+ * The weekly resets in [from, to) and what each threw away, measured from the readings: a reset
+ * is where a subscription's countdown names a week at least a day later than the one before
+ * while that one's reset has come, and what it threw away is what the highest used share in the
+ * half hour before it left (a bucket holding the reset has the old week's share as its highest).
+ * A reset with no reading of the share before it is left out.
+ */
+export function measuredResets(
+  history: Pick<QuotaHistory, 'stepMs' | 'weeklyUsed' | 'weeklyResetsInSeconds'>,
+  from: EpochMs,
+  to: EpochMs,
+): ResetWaste[] {
+  const used = new Map(history.weeklyUsed.map((s) => [s.key, s.points]))
+  const resets: ResetWaste[] = []
+  for (const s of history.weeklyResetsInSeconds) {
+    const points = s.points.filter(([, v]) => Number.isFinite(v) && v > 0)
+    for (let i = 1; i < points.length; i++) {
+      const [aAt, aLeft] = points[i - 1] as [EpochMs, number]
+      const [bAt, bLeft] = points[i] as [EpochMs, number]
+      const reset = aAt + aLeft * 1000
+      const next = bAt + bLeft * 1000
+      if (next - reset < 24 * HOUR_MS || reset > bAt + history.stepMs) continue
+      if (reset < from || reset >= to) continue
+      let before = Number.NEGATIVE_INFINITY
+      for (const [t, v] of used.get(s.key) ?? []) {
+        if (t > reset - BEFORE_RESET_MS && t <= reset && Number.isFinite(v))
+          before = Math.max(before, v)
+      }
+      if (before === Number.NEGATIVE_INFINITY) continue
+      resets.push({ profile: s.key, at: reset, unused: Math.max(0, 1 - before) })
+    }
+  }
+  return resets.sort((a, b) => a.at - b.at)
+}
+
+/** How wide a reset's spike is drawn: a minute either side, a line at any chart's width. */
+const SPIKE_MS = 60_000
+
+/**
+ * Waste as it happens: nothing at each of `times`, and at each reset a spike to what it threw
+ * away (resets at the same moment add up). A time within a spike's width of a reset gives way.
+ */
+export function resetSpikes(
+  resets: ReadonlyArray<{ at: EpochMs; unused: number }>,
+  times: EpochMs[],
+): Array<[EpochMs, number]> {
+  const at = new Map<EpochMs, number>()
+  for (const r of resets) at.set(r.at, (at.get(r.at) ?? 0) + r.unused)
+  const near = (t: EpochMs) => [...at.keys()].some((r) => Math.abs(t - r) <= SPIKE_MS)
+  const points: Array<[EpochMs, number]> = times.filter((t) => !near(t)).map((t) => [t, 0])
+  for (const [t, unused] of at) {
+    points.push([t - SPIKE_MS, 0], [t, unused], [t + SPIKE_MS, 0])
+  }
+  return points.sort((a, b) => a[0] - b[0])
 }
