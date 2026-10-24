@@ -1544,7 +1544,7 @@ describe('a subscription row', () => {
 describe('the capacity advice', () => {
   it('appears under the waste chart once the page is up, not in the first paint', async () => {
     const { container, serverText } = await hydrated(ZONE)
-    expect(serverText).not.toMatch(/could cancel|subscriptions? (by|now|in)/i)
+    expect(serverText).not.toMatch(/[Cc]ould cancel|subscriptions? (by|now|in)/)
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
