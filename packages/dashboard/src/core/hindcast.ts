@@ -82,8 +82,13 @@ export function profilesAt(history: QuotaHistory, t: EpochMs): ProfileStatus[] {
     used: [EpochMs, number],
     reset: [EpochMs, number] | undefined,
     lengthMs: number,
+    /** A countdown of zero or less: a weekly one is not known, a 5-hour one reset when read. */
+    zero: 'unknown' | 'read',
   ): QuotaWindow => {
-    const resetsAt = reset === undefined || reset[1] <= 0 ? null : reset[0] + reset[1] * 1000
+    const resetsAt =
+      reset === undefined || (reset[1] <= 0 && zero === 'unknown')
+        ? null
+        : reset[0] + Math.max(0, reset[1]) * 1000
     const begunSince = resetsAt !== null && resetsAt - lengthMs > used[0] - stepMs
     return { usedFraction: begunSince ? 0 : used[1], resetsAt, lengthMs }
   }
@@ -97,8 +102,8 @@ export function profilesAt(history: QuotaHistory, t: EpochMs): ProfileStatus[] {
     profiles.push({
       profile: s.key,
       band: 'ok',
-      weekly: window(used, weeklyReset, WEEK_MS),
-      fiveHour: five === undefined ? null : window(five, fiveReset, FIVE_HOURS_MS),
+      weekly: window(used, weeklyReset, WEEK_MS, 'unknown'),
+      fiveHour: five === undefined ? null : window(five, fiveReset, FIVE_HOURS_MS, 'read'),
       rateLimitedUntil: null,
       tokenExpiresAt: null,
       latencyMs: { p50: null, p95: null, p99: null },

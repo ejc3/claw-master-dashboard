@@ -105,6 +105,19 @@ describe('profilesAt', () => {
     expect(b?.weekly.usedFraction).toBe(1)
   })
 
+  it('reads a 5-hour countdown of zero as reset when read, and a weekly one as not known', () => {
+    const zero: QuotaHistory = {
+      stepMs: STEP,
+      weeklyUsed: [{ key: 'a', points: [[T - STEP, 1]] }],
+      weeklyResetsInSeconds: [{ key: 'a', points: [[T - STEP, 0]] }],
+      fiveHourUsed: [{ key: 'a', points: [[T - STEP, 1]] }],
+      fiveHourResetsInSeconds: [{ key: 'a', points: [[T - STEP, 0]] }],
+    }
+    const [a] = profilesAt(zero, T)
+    expect(a?.weekly.resetsAt).toBeNull()
+    expect(a?.fiveHour).toEqual({ usedFraction: 1, resetsAt: T - STEP, lengthMs: FIVE_HOURS_MS })
+  })
+
   it('leaves out a subscription whose weekly reading is over half an hour old', () => {
     expect(profilesAt(history, T).map((p) => p.profile)).toEqual(['a'])
   })
