@@ -114,7 +114,10 @@ const FULL_READING = 1 - 1e-9
 /** How long a reading stands for its subscription when the next is missing (a few missed polls). */
 const READING_HOLDS_MS = 30 * 60_000
 
-/** The latest point at or before `t` and no older than READING_HOLDS_MS, of points in time order. */
+/**
+ * The reading that stands at `t`: the latest at or before it, if under READING_HOLDS_MS old, of
+ * points in time order.
+ */
 function readingAt(points: Array<[EpochMs, number]>, t: EpochMs): number | undefined {
   let lo = 0
   let hi = points.length
@@ -124,16 +127,20 @@ function readingAt(points: Array<[EpochMs, number]>, t: EpochMs): number | undef
     else hi = mid
   }
   const p = points[lo - 1]
-  return p === undefined || p[0] < t - READING_HOLDS_MS || !Number.isFinite(p[1]) ? undefined : p[1]
+  return p === undefined || t - p[0] >= READING_HOLDS_MS || !Number.isFinite(p[1])
+    ? undefined
+    : p[1]
 }
 
 /**
- * When the pool had no tokens in [from, to), measured from the readings: each step at which every
- * subscription read in the last half hour was out of its week or of its 5-hour window, joined into
- * spans. A subscription's last reading stands until the next (a missing step does not take it out
- * of the pool), and the last step's state until `to`, for at most half an hour. A step with no
- * subscription read is not counted either way. A step's reading is its highest, so a window that
- * reset within the step counts that step as out.
+ * When the pool had no tokens in [from, to), measured from the readings. A reading stands for its
+ * subscription from its time until the next, for under READING_HOLDS_MS (a missing reading does
+ * not take a subscription out of the pool, and an old one does not stand for ever). At any moment
+ * the pool is out when at least one subscription has a standing weekly reading and every such one
+ * is out of its week or of its 5-hour window. That only changes when a reading starts or stops
+ * standing, so the state is worked out at exactly those moments (and at `from`, from the readings
+ * before it) and held between them. A reading is its step's highest, so a window that reset
+ * within the step counts that step as out.
  */
 export function measuredBlocked(
   history: Pick<QuotaHistory, 'stepMs' | 'weeklyUsed' | 'fiveHourUsed'>,
@@ -141,24 +148,28 @@ export function measuredBlocked(
   to: EpochMs,
 ): Array<{ start: EpochMs; end: EpochMs }> {
   const five = new Map(history.fiveHourUsed.map((s) => [s.key, s.points]))
-  const steps = new Set<EpochMs>()
-  for (const s of history.weeklyUsed) {
-    for (const [t] of s.points) if (t >= from && t < to) steps.add(t)
+  const changes = new Set<EpochMs>([from])
+  for (const s of [...history.weeklyUsed, ...history.fiveHourUsed]) {
+    for (const [t] of s.points) {
+      for (const at of [t, t + READING_HOLDS_MS]) if (at > from && at < to) changes.add(at)
+    }
   }
-  const times = [...steps].sort((a, b) => a - b)
-  const spans: Array<{ start: EpochMs; end: EpochMs }> = []
-  for (const [i, t] of times.entries()) {
-    let read = 0
-    let full = true
+  const outAt = (t: EpochMs) => {
+    let read = false
     for (const s of history.weeklyUsed) {
       const week = readingAt(s.points, t)
       if (week === undefined) continue
-      read++
+      read = true
       const window = readingAt(five.get(s.key) ?? [], t)
-      if (week < FULL_READING && (window === undefined || window < FULL_READING)) full = false
+      if (week < FULL_READING && (window === undefined || window < FULL_READING)) return false
     }
-    if (read === 0 || !full) continue
-    const end = Math.min(times[i + 1] ?? to, t + READING_HOLDS_MS, to)
+    return read
+  }
+  const times = [...changes].sort((a, b) => a - b)
+  const spans: Array<{ start: EpochMs; end: EpochMs }> = []
+  for (const [i, t] of times.entries()) {
+    if (!outAt(t)) continue
+    const end = times[i + 1] ?? to
     const last = spans.at(-1)
     if (last !== undefined && last.end === t) last.end = end
     else spans.push({ start: t, end })

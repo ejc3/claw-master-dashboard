@@ -156,32 +156,6 @@ describe('poolGaps at a pace that changes', () => {
   })
 })
 
-describe('measuredBlocked', () => {
-  const read = (key: string, values: number[]) => ({
-    key,
-    points: values.map((v, i): [EpochMs, number] => [T + i * STEP, v]),
-  })
-  it('is each step every subscription read was out of its week or its 5-hour window, joined', () => {
-    const spans = measuredBlocked(
-      {
-        stepMs: STEP,
-        // a's week is out from the second step; b's 5-hour window from the third to the fourth.
-        weeklyUsed: [read('a', [0.9, 1, 1, 1, 1]), read('b', [0.5, 0.5, 0.5, 0.5, 0.5])],
-        fiveHourUsed: [read('b', [0.2, 0.9, 1, 1, 0.1])],
-      },
-      T,
-      T + 5 * STEP,
-    )
-    expect(spans).toEqual([{ start: T + 2 * STEP, end: T + 4 * STEP }])
-  })
-  it('keeps to the span asked for', () => {
-    const history = { stepMs: STEP, weeklyUsed: [read('a', [1, 1, 1])], fiveHourUsed: [] }
-    expect(measuredBlocked(history, T + STEP, T + 2 * STEP)).toEqual([
-      { start: T + STEP, end: T + 2 * STEP },
-    ])
-  })
-})
-
 describe('running totals', () => {
   const times = [T, T + HOUR_MS, T + 2 * HOUR_MS, T + 3 * HOUR_MS]
   it('adds each reset at its moment, from the first time on', () => {
@@ -207,58 +181,142 @@ describe('running totals', () => {
   })
 })
 
-describe('measuredBlocked at the edges', () => {
-  const at = (key: string, steps: Array<[number, number]>) => ({
+describe('measuredBlocked', () => {
+  const MIN = 60_000
+  // Readings at whole minutes after T.
+  const at = (key: string, readings: Array<[number, number]>) => ({
     key,
-    points: steps.map(([i, v]): [EpochMs, number] => [T + i * STEP, v]),
+    points: readings.map(([m, v]): [EpochMs, number] => [T + m * MIN, v]),
   })
-  it('keeps a subscription in the pool across a missing reading', () => {
-    const spans = measuredBlocked(
-      {
-        stepMs: STEP,
-        weeklyUsed: [
-          at('a', [
-            [0, 1],
-            [1, 1],
-            [2, 1],
-            [3, 1],
-          ]),
-          // b is not read at the third step: its last reading, 20%, still stands.
-          at('b', [
-            [0, 0.2],
-            [1, 0.2],
-            [3, 0.2],
-          ]),
-        ],
-        fiveHourUsed: [
-          at('b', [
-            [0, 0.2],
-            [1, 0.2],
-            [2, 0.2],
-            [3, 0.2],
-          ]),
-        ],
-      },
-      T,
-      T + 4 * STEP,
-    )
-    expect(spans).toEqual([])
-  })
-  it('ends a span at the cutoff, and holds the last state up to it for half an hour', () => {
-    const full = {
-      stepMs: STEP,
-      weeklyUsed: [
+  const spans = (
+    weekly: ReturnType<typeof at>[],
+    five: ReturnType<typeof at>[],
+    from: number,
+    to: number,
+  ) =>
+    measuredBlocked(
+      { stepMs: STEP, weeklyUsed: weekly, fiveHourUsed: five },
+      T + from * MIN,
+      T + to * MIN,
+    ).map((s) => [(s.start - T) / MIN, (s.end - T) / MIN])
+  const cases: Array<{
+    name: string
+    weekly: ReturnType<typeof at>[]
+    five?: ReturnType<typeof at>[]
+    from?: number
+    to: number
+    blocked: number[][]
+  }> = [
+    {
+      name: 'every subscription out of its week or its 5-hour window, joined',
+      weekly: [
         at('a', [
-          [0, 1],
-          [1, 1],
-          [2, 1],
+          [0, 0.9],
+          [10, 1],
+          [20, 1],
+          [30, 1],
+          [40, 1],
+        ]),
+        at('b', [
+          [0, 0.5],
+          [10, 0.5],
+          [20, 0.5],
+          [30, 0.5],
+          [40, 0.5],
         ]),
       ],
-      fiveHourUsed: [],
-    }
-    expect(measuredBlocked(full, T, T + 25 * 60_000)).toEqual([{ start: T, end: T + 25 * 60_000 }])
-    expect(measuredBlocked(full, T, T + 35 * 60_000)).toEqual([{ start: T, end: T + 35 * 60_000 }])
-    // Past half an hour without a reading, it is not known.
-    expect(measuredBlocked(full, T, T + 2 * HOUR_MS)).toEqual([{ start: T, end: T + 50 * 60_000 }])
-  })
+      five: [
+        at('b', [
+          [0, 0.2],
+          [10, 0.9],
+          [20, 1],
+          [30, 1],
+          [40, 0.1],
+        ]),
+      ],
+      to: 50,
+      blocked: [[20, 40]],
+    },
+    {
+      name: 'a subscription stays in the pool across a missing reading',
+      weekly: [
+        at('a', [
+          [0, 1],
+          [10, 1],
+          [20, 1],
+          [30, 1],
+        ]),
+        at('b', [
+          [0, 0.2],
+          [10, 0.2],
+          [30, 0.2],
+        ]),
+      ],
+      to: 40,
+      blocked: [],
+    },
+    {
+      name: 'a 5-hour window freed between weekly readings ends the span then',
+      weekly: [
+        at('a', [
+          [0, 0.2],
+          [20, 0.2],
+        ]),
+      ],
+      five: [
+        at('a', [
+          [0, 1],
+          [10, 0.1],
+          [20, 0.1],
+        ]),
+      ],
+      to: 30,
+      blocked: [[0, 10]],
+    },
+    {
+      name: 'a reading stands for under half an hour',
+      weekly: [
+        at('a', [
+          [0, 0.2],
+          [10, 0.2],
+          [20, 0.2],
+          [30, 0.2],
+        ]),
+      ],
+      five: [at('a', [[0, 1]])],
+      to: 60,
+      blocked: [[0, 30]],
+    },
+    {
+      name: 'the state at the start comes from the readings before it',
+      weekly: [
+        at('a', [
+          [0, 1],
+          [10, 1],
+          [20, 1],
+        ]),
+      ],
+      from: 5,
+      to: 25,
+      blocked: [[5, 25]],
+    },
+    {
+      name: 'the last state holds to the cutoff, or half an hour, whichever first',
+      weekly: [
+        at('a', [
+          [0, 1],
+          [10, 1],
+          [20, 1],
+        ]),
+      ],
+      to: 120,
+      blocked: [[0, 50]],
+    },
+    { name: 'nothing read, nothing known', weekly: [], to: 60, blocked: [] },
+  ]
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(spans(c.weekly, c.five ?? [], c.from ?? 0, c.to)).toEqual(c.blocked)
+    })
+  }
 })
