@@ -304,7 +304,8 @@
     color: var(--cmd-ink-3);
   }
 
-  .cmd-forecast-history .cmd-capacity-note {
+  .cmd-forecast-history .cmd-capacity-note,
+  .cmd-forecast-history .cmd-forecast-facts {
     padding: 0 16px;
   }
 
@@ -931,6 +932,18 @@
   .cmd-band {
     fill: var(--cmd-exhausted-mark);
     opacity: 0.14;
+  }
+
+  /* A moment marked across a chart: a dashed rule and its label. */
+  .cmd-marker line {
+    stroke: var(--cmd-ink-3);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+
+  .cmd-marker text {
+    fill: var(--cmd-ink-3);
+    font-size: 11px;
   }
 
   .cmd-area {

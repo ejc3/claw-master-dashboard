@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  type CapacityAdvice,
   type EpochMs,
   extendHindcast,
+  GAPS_HORIZON_MS,
   type HindcastPoint,
   HOUR_MS,
   hindcastTimes,
+  type PoolGaps,
+  type ProfileStatus,
   type QuotaHistory,
   type Series,
+  wasteAndClipping,
 } from '../core'
-import { useReadings } from './hooks'
+import { useReadings, useWhen } from './hooks'
 import { type ChartSeries, LineChart } from './LineChart'
+import { adviceLine, shortNames, unusedLine } from './Pool'
 import { historyQuery, READINGS_STEP_MS } from './queries'
 
 const asPercent = (v: number) => `${Math.round(v * 100)}%`
@@ -50,8 +56,17 @@ function useHistory(
  * weekly resets would throw away, and how much demand no subscription could take. Rebuilt from
  * the quota readings, so it shows how the pace and the pool moved the outlook between the two.
  */
-export function ForecastHistory(props: { apiBase: string; now: EpochMs }) {
-  const { apiBase, now } = props
+export function ForecastHistory(props: {
+  apiBase: string
+  now: EpochMs
+  /** The forecast now (the headline's): the week ahead. */
+  gaps: PoolGaps | null
+  /** What to buy or cancel (capacityAdvice), when it has been worked out. */
+  advice?: CapacityAdvice | null
+  profiles: ProfileStatus[] | null
+}) {
+  const { apiBase, now, gaps } = props
+  const when = useWhen()
   const weeklyUsed = useHistory(apiBase, now, 'weeklyUsed')
   const weeklyResets = useHistory(apiBase, now, 'weeklyResetsInSeconds')
   const fiveUsed = useHistory(apiBase, now, 'fiveHourUsed')
@@ -80,41 +95,101 @@ export function ForecastHistory(props: { apiBase: string; now: EpochMs }) {
     return () => clearTimeout(timer)
   }, [weeklyUsed, weeklyResets, fiveUsed, fiveResets])
 
+  // One grid: each hour of the last week as its forecast saw the week ahead, then each hour of the
+  // week ahead as the forecast now sees what is still to come from it, so the steps down show
+  // when the waste and the clipping fall.
   const series: ChartSeries[] = useMemo(() => {
-    if (points === null) return []
-    const made = [...points.values()].filter((p): p is HindcastPoint => p !== null)
+    // The week ahead does not wait on last week's readings, nor fail with them.
+    const made = [...(points?.values() ?? [])].filter((p): p is HindcastPoint => p !== null)
+    const ahead: HindcastPoint[] = []
+    if (gaps !== null && gaps.lasts !== 'unknown' && gaps.lasts !== 'logins') {
+      ahead.push(wasteAndClipping(gaps))
+      const first = Math.floor(gaps.clock / HOUR_MS) * HOUR_MS + HOUR_MS
+      for (let t = first; t <= gaps.clock + GAPS_HORIZON_MS; t += HOUR_MS) {
+        ahead.push(wasteAndClipping(gaps, t))
+      }
+    }
+    // The forecast now, from its own clock on: a rebuilt hour at or after it gives way.
+    const from = ahead[0]?.at ?? Number.POSITIVE_INFINITY
+    const all = [...made.filter((p) => p.at < from), ...ahead]
+    if (all.length === 0) return []
     return [
-      {
-        key: 'clipped',
-        label: 'Clipped',
-        color: 'var(--cmd-series-2)',
-        points: made.map((p): [EpochMs, number] => [p.at, p.clipped]),
-      },
       {
         key: 'wasted',
         label: 'Wasted at resets',
         color: 'var(--cmd-series-3)',
-        points: made.map((p): [EpochMs, number] => [p.at, p.wasted]),
+        points: all.map((p): [EpochMs, number] => [p.at, p.wasted]),
+      },
+      {
+        key: 'clipped',
+        label: 'Clipped',
+        color: 'var(--cmd-series-2)',
+        points: all.map((p): [EpochMs, number] => [p.at, p.clipped]),
       },
     ]
-  }, [points])
+  }, [points, gaps])
+
+  const bands = useMemo(
+    () =>
+      (gaps?.gaps ?? []).map((g) => ({
+        start: g.start,
+        end: g.end ?? (gaps?.clock ?? 0) + GAPS_HORIZON_MS,
+      })),
+    [gaps],
+  )
+  // The week ahead as the forecast now sees it: each title's value.
+  const ahead = useMemo(
+    () =>
+      gaps === null || gaps.lasts === 'unknown' || gaps.lasts === 'logins'
+        ? null
+        : wasteAndClipping(gaps),
+    [gaps],
+  )
+  const names = shortNames((props.profiles ?? []).map((p) => p.profile))
+  const clock = when === null ? null : (t: EpochMs) => when(t, now)
+  const forecasting = gaps !== null && gaps.lasts !== 'unknown' && gaps.lasts !== 'logins'
+  const lines = forecasting
+    ? [unusedLine(gaps, names, clock), adviceLine(props.advice ?? null, names, now, clock)]
+    : []
 
   return (
-    <section className="cmd-forecast-history" aria-label="Forecasts over the last week">
+    <section className="cmd-forecast-history" aria-label="Waste and clipping">
       {series.length === 0 || (series[0]?.points.length ?? 0) < 2 ? (
         <p className="cmd-empty">Rebuilding last week's forecasts…</p>
       ) : (
-        <LineChart
-          title="Forecasts over the last week: clipped and wasted in the week ahead"
-          series={series}
-          format={asPercent}
-          height={180}
-          now={now}
-        />
+        // One chart each, on the same time axis: a week of clipping can be ten subscriptions'
+        // worth, and on its scale the waste would not show.
+        series.map((s) => (
+          <LineChart
+            key={s.key}
+            title={`${s.key === 'wasted' ? 'Wasted at resets' : 'Clipped'}${
+              ahead === null
+                ? ''
+                : ` · ${asPercent(s.key === 'wasted' ? ahead.wasted : ahead.clipped)} ahead`
+            }`}
+            series={[s]}
+            format={asPercent}
+            height={140}
+            now={now}
+            bands={bands}
+            bandLabel="No tokens forecast"
+            area
+            {...(gaps === null ? {} : { marker: { at: gaps.clock, label: 'Now' } })}
+          />
+        ))
+      )}
+      {lines.some((l) => l !== null) && (
+        <ul className="cmd-facts cmd-forecast-facts">
+          {lines
+            .filter((l): l is string => l !== null)
+            .map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+        </ul>
       )}
       <p className="cmd-capacity-note">
-        Each hour, the forecast as it stood then · clipped: demand no subscription could take ·
-        wasted: left unused when weeks reset · each subscription's week counts 100%
+        Left of now: what each hour's forecast expected in its next week · right: what is still to
+        come · 100% is one subscription's week · shaded: no tokens
       </p>
     </section>
   )
