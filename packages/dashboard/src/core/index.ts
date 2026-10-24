@@ -85,6 +85,7 @@ export {
   profilesAt,
   type QuotaHistory,
   type ResetWaste,
+  replayWeekPerWindow,
   resetSpikes,
   wasteAndClipping,
   weekAgoPace,

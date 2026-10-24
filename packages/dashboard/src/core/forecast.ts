@@ -726,6 +726,8 @@ export function poolGaps(
       const at = paceAt(t)
       perWeek = (rate(at.weekly) / HOUR_MS) * step
       perFive = (rate(at.fiveHour) / HOUR_MS) * step
+      // An idle step does no work, so it opens no 5-hour window.
+      if (perWeek <= 0 && perFive <= 0) continue
     }
     // In claude-master's order as of this step; what one cannot take goes to the next. `left` is
     // the share of this step's work still to place; each subscription takes what its fuller

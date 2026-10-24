@@ -14,6 +14,7 @@ import {
   poolGaps,
   profilesAt,
   type QuotaHistory,
+  replayWeekPerWindow,
   resetSpikes,
   type Series,
   WEEK_MS,
@@ -329,6 +330,42 @@ describe('measuredResets', () => {
   })
 })
 
+describe('measuredResets at a bucket starting on the reset', () => {
+  // The week resets at T, a bucket's start: that bucket holds the new week only.
+  const countdown = every('a', T - HOUR_MS, T + HOUR_MS, (t) =>
+    t < T ? (T - t) / 1000 : (T + WEEK_MS - t) / 1000,
+  )
+  it("does not take the new week's share for the old week's", () => {
+    const used = every('a', T - HOUR_MS, T + HOUR_MS, (t) => (t < T ? 0.01 : 0.03))
+    const [reset] = measuredResets(
+      { stepMs: STEP, weeklyUsed: [used], weeklyResetsInSeconds: [countdown] },
+      T - HOUR_MS,
+      T + HOUR_MS,
+    )
+    expect(reset?.at).toBe(T)
+    expect(reset?.unused).toBeCloseTo(0.99, 9)
+  })
+  it("leaves out a reset with only the new week's share read", () => {
+    const used = { key: 'a', points: [[T, 0.03]] as Array<[EpochMs, number]> }
+    expect(
+      measuredResets(
+        { stepMs: STEP, weeklyUsed: [used], weeklyResetsInSeconds: [countdown] },
+        T - HOUR_MS,
+        T + HOUR_MS,
+      ),
+    ).toEqual([])
+  })
+})
+
+describe('replayWeekPerWindow', () => {
+  it("is the pool's measured cost, else the forecast's own, else unknown", () => {
+    expect(replayWeekPerWindow(0.25, { weekly: 0.05, fiveHour: 0.1 })).toBe(0.25)
+    expect(replayWeekPerWindow(null, { weekly: 0.05, fiveHour: 0.2 })).toBe(0.25)
+    expect(replayWeekPerWindow(null, { weekly: 0.05, fiveHour: 0 })).toBeNull()
+    expect(replayWeekPerWindow(null, null)).toBeNull()
+  })
+})
+
 describe('resetSpikes', () => {
   it('is nothing at each time and a spike at each reset, same-moment resets added', () => {
     const points = resetSpikes(
@@ -385,6 +422,28 @@ describe('poolGaps at a pace that changes', () => {
     latencyMs: { p50: null, p95: null, p99: null },
   }
   const pace = { weekly: 0, fiveHour: 0 }
+
+  it('opens no 5-hour window in an idle stretch: as if it started at the first work', () => {
+    // A closed 5-hour window; idle four hours, then 5% of the week and 25% of a window an hour:
+    // a window fills an hour before it resets, so where it opened shows in when the gap starts.
+    const closed: ProfileStatus = {
+      ...a,
+      fiveHour: { usedFraction: 0, resetsAt: null, lengthMs: FIVE_HOURS_MS },
+    }
+    const busy = { weekly: 0.05, fiveHour: 0.25 }
+    const paceAt = (t: EpochMs) => (t < T + 4 * HOUR_MS ? { weekly: 0, fiveHour: 0 } : busy)
+    const replayed = poolGaps([closed], T, new Map(), T, false, pace, paceAt)
+    const later = T + 4 * HOUR_MS
+    const fromWork = poolGaps(
+      [{ ...closed, weekly: { ...closed.weekly } }],
+      later,
+      new Map(),
+      later,
+      false,
+      busy,
+    )
+    expect(replayed.gaps[0]?.start).toBe(fromWork.gaps[0]?.start)
+  })
 
   it('uses nothing while the pattern is idle and runs out once it picks up', () => {
     // Idle for a day, then 5% an hour: the half week left lasts 10 hours.

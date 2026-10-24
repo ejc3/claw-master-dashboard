@@ -12,6 +12,7 @@ import {
   type PoolGaps,
   type ProfileStatus,
   type QuotaHistory,
+  replayWeekPerWindow,
   resetSpikes,
   type Series,
   wasteAndClipping,
@@ -116,11 +117,12 @@ export function ForecastHistory(props: {
   const lastWeekPace = useMemo(() => {
     if (weeklyUsed === null || fiveUsed === null) return null
     const end = Math.min(weeklyUsed.end, fiveUsed.end)
-    return weekAgoPace(
-      weeklyUsed.series,
+    const ratio = replayWeekPerWindow(
       weekPerFiveHourWindow(weeklyUsed.series, fiveUsed.series, end),
+      gaps?.pace ?? null,
     )
-  }, [weeklyUsed, fiveUsed])
+    return ratio === null ? null : weekAgoPace(weeklyUsed.series, ratio)
+  }, [weeklyUsed, fiveUsed, gaps])
   const lastWeekGaps = useMemo(
     () =>
       forecastWith === undefined || lastWeekPace === null || !forecastingGaps(gaps)
@@ -195,6 +197,13 @@ export function ForecastHistory(props: {
   const charts = series
     .map((s) => (s.key === 'wasted' ? wasteSeries : s))
     .filter((s): s is ChartSeries => s !== null)
+  // One time axis for both: a reset's spike can fall past the last hour, or before the first.
+  const domainStart = Math.min(...charts.map((s) => s.points[0]?.[0] ?? Number.POSITIVE_INFINITY))
+  const domainEnd = Math.max(...charts.map((s) => s.points.at(-1)?.[0] ?? Number.NEGATIVE_INFINITY))
+  const domain =
+    Number.isFinite(domainStart) && Number.isFinite(domainEnd)
+      ? { start: domainStart, end: domainEnd }
+      : undefined
 
   const bands = useMemo(
     () =>
@@ -258,6 +267,7 @@ export function ForecastHistory(props: {
             bandLabel="No tokens forecast"
             area
             {...(shown === null ? {} : { marker: { at: shown.clock, label: 'Now' } })}
+            {...(domain === undefined ? {} : { domain })}
           />
         ))
       )}

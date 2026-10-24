@@ -244,4 +244,21 @@ describe('ForecastHistory', () => {
     expect(title()).toMatch(/^Wasted at resets · 90% ahead/)
     expect(page.container.textContent).toContain('Most wasted: a 90%')
   })
+
+  it('puts both charts on one time axis when a reset falls past the last hour', async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    // A reset a minute before the horizon: after the last whole hour the clipping chart has.
+    const late: PoolGaps = {
+      ...gaps,
+      unusedAtReset: [{ profile: 'a', at: T0 + WEEK_MS - 60_000, unused: 0.5 }],
+    }
+    const page = mount(late)
+    page.render(T0)
+    await page.settle()
+    const nows = [...page.container.querySelectorAll('.cmd-marker line')].map((l) =>
+      l.getAttribute('x1'),
+    )
+    expect(nows).toHaveLength(2)
+    expect(nows[0]).toBe(nows[1])
+  })
 })

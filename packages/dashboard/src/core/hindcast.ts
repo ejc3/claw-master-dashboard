@@ -252,7 +252,8 @@ const BEFORE_RESET_MS = 30 * 60_000
  * The weekly resets in [from, to) and what each threw away, measured from the readings: a reset
  * is where a subscription's countdown names a week at least a day later than the one before
  * while that one's reset has come, and what it threw away is what the highest used share in the
- * half hour before it left (a bucket holding the reset has the old week's share as its highest).
+ * buckets starting in the half hour before it left (a bucket holding the reset has the old week's
+ * share as its highest; one starting at or after it, the new week's).
  * A reset with no reading of the share before it is left out.
  */
 export function measuredResets(
@@ -273,7 +274,8 @@ export function measuredResets(
       if (reset < from || reset >= to) continue
       let before = Number.NEGATIVE_INFINITY
       for (const [t, v] of used.get(s.key) ?? []) {
-        if (t > reset - BEFORE_RESET_MS && t <= reset && Number.isFinite(v))
+        // A bucket that starts at or after the reset holds the new week only.
+        if (t > reset - BEFORE_RESET_MS && t < reset && Number.isFinite(v))
           before = Math.max(before, v)
       }
       if (before === Number.NEGATIVE_INFINITY) continue
@@ -302,4 +304,19 @@ export function resetSpikes(
     points.push([t - SPIKE_MS, 0], [t, unused], [t + SPIKE_MS, 0])
   }
   return points.sort((a, b) => a[0] - b[0])
+}
+
+/**
+ * What a full 5-hour window costs of the week, for replaying last week: the pool's own over the
+ * last two days (weekPerFiveHourWindow), else the one the forecast now runs at (its weekly pace
+ * over its 5-hour one); null when neither tells, and then last week cannot be replayed, since
+ * its 5-hour use would be taken as none.
+ */
+export function replayWeekPerWindow(
+  measured: number | null,
+  pace: PoolGaps['pace'] | null,
+): number | null {
+  if (measured !== null && Number.isFinite(measured) && measured > 0) return measured
+  if (pace === null || !(pace.fiveHour > 0) || !(pace.weekly > 0)) return null
+  return pace.weekly / pace.fiveHour
 }
