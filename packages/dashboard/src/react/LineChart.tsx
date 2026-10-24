@@ -41,16 +41,20 @@ interface Props {
   table?: boolean
   /** Stack the series as areas, each on the ones before it, so the top is their total. */
   stacked?: boolean
+  /** A moment marked across the plot with a labelled line, e.g. where measured turns to forecast. */
+  marker?: { at: EpochMs; label: string }
 }
 
 const PAD = { top: 8, right: 8, bottom: 22, left: 44 }
 const LABEL_GUTTER = 72
 
 /**
- * A clock time for an axis tick, short: a day's midnight is the day ("Tue 12:00 AM" → "Tue"), and
- * an hour on the hour drops its minutes ("6:00 PM" → "6 PM").
+ * A clock time for an axis tick, short: a day's midnight is the day ("Tue 12:00 AM" → "Tue",
+ * today's "Today"), and an hour on the hour drops its minutes ("6:00 PM" → "6 PM").
  */
 export function axisTime(label: string): string {
+  // Today's midnight has no day before it (formatWhen leaves today's off).
+  if (label === '12:00 AM') return 'Today'
   const day = label.replace(/^(.+?),? 12:00 AM$/, '$1')
   return day !== label ? day : label.replace(/:00 (AM|PM)$/, ' $1')
 }
@@ -135,6 +139,7 @@ export const LineChart = memo(function LineChart({
   table = true,
   stacked = false,
   max: fixedMax,
+  marker,
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>()
   // Series turned off from the legend; at least one always stays on.
@@ -384,6 +389,19 @@ export const LineChart = memo(function LineChart({
                   />
                 ) : null
               })}
+              {marker !== undefined && marker.at >= first && marker.at <= last && (
+                <g className="cmd-marker">
+                  <line
+                    x1={x(marker.at)}
+                    x2={x(marker.at)}
+                    y1={PAD.top}
+                    y2={PAD.top + plotHeight}
+                  />
+                  <text x={x(marker.at) + 4} y={PAD.top + 10}>
+                    {marker.label}
+                  </text>
+                </g>
+              )}
               {stacked &&
                 series.map((s, k) => (
                   <polygon
@@ -528,7 +546,11 @@ const TICK_HOURS = [1, 2, 3, 6, 12, 24, 48]
  */
 export function timeTicks(first: EpochMs, last: EpochMs, most: number): EpochMs[] {
   if (last <= first) return []
-  const hours = TICK_HOURS.find((h) => (last - first) / (h * HOUR) <= most) ?? 48
+  // Past the longest step, whole days: two at a time, or more where a span longer than a week
+  // would put half again as many labels as asked for side by side.
+  const days = Math.ceil((last - first) / (most * 1.5) / (24 * HOUR))
+  const hours =
+    TICK_HOURS.find((h) => (last - first) / (h * HOUR) <= most) ?? Math.max(48, days * 24)
   const every = Math.min(hours, 24)
   // The first local time at or after `from` that is on the hour and a multiple of the step.
   // Minutes are zeroed on every move: a daylight-saving jump can shift the clock by half an hour.

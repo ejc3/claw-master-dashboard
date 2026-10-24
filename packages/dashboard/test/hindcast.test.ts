@@ -186,6 +186,31 @@ describe('wasteAndClipping', () => {
   })
 })
 
+describe('wasteAndClipping from a later time', () => {
+  it('counts only what is still to come: later resets, and the gaps from then on', () => {
+    const gaps: PoolGaps = {
+      counted: 2,
+      unreported: 0,
+      gaps: [{ start: T + 10 * HOUR_MS, end: T + 14 * HOUR_MS, endsWith: 'fiveHour' }],
+      lasts: null,
+      trace: [],
+      clock: T,
+      capacity: 2,
+      subscriptions: ['a', 'b'],
+      pace: { weekly: 0.1, fiveHour: 0.4 },
+      unusedAtReset: [
+        { profile: 'a', at: T + 5 * HOUR_MS, unused: 0.25 },
+        { profile: 'b', at: T + 20 * HOUR_MS, unused: 0.5 },
+      ],
+    }
+    expect(wasteAndClipping(gaps)).toMatchObject({ at: T, wasted: 0.75, clippedHours: 4 })
+    const later = wasteAndClipping(gaps, T + 12 * HOUR_MS)
+    expect(later).toMatchObject({ at: T + 12 * HOUR_MS, wasted: 0.5, clippedHours: 2 })
+    expect(later.clipped).toBeCloseTo(0.2)
+    expect(wasteAndClipping(gaps, T + 21 * HOUR_MS)).toMatchObject({ wasted: 0, clipped: 0 })
+  })
+})
+
 describe('hindcast', () => {
   it('clips when the pace runs the week out before it resets', () => {
     // Half the week left at 2% an hour: gone in 25 hours, back in 100.

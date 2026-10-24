@@ -503,10 +503,15 @@ function DashboardBody(props: DashboardProps) {
           profiles={profilesNow}
           now={now}
           detail={outlookDetail}
-          advice={advice}
         />
 
-        <ForecastHistory apiBase={apiBase} now={now} />
+        <ForecastHistory
+          apiBase={apiBase}
+          now={now}
+          gaps={gaps}
+          advice={advice}
+          profiles={profilesNow}
+        />
 
         <section className="cmd-kpis" aria-label="Traffic">
           {tokensLastHour === null || tokensLastHourTotal === null ? (

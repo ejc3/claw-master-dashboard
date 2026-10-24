@@ -28,6 +28,20 @@ describe('timeTicks', () => {
     }
   })
 
+  it('spaces a fortnight out on a narrow chart, and leaves a week as it was', () => {
+    const fortnight = timeTicks(NOW - 7 * 24 * HOUR_MS, NOW + 7 * 24 * HOUR_MS, 3)
+    expect(fortnight.length).toBeLessThanOrEqual(4)
+    expect((fortnight[1] ?? 0) - (fortnight[0] ?? 0)).toBe(4 * 24 * HOUR_MS)
+    // A week, narrow or wide: every two days, as before.
+    for (const most of [3, 6]) {
+      const week = timeTicks(NOW - 7 * 24 * HOUR_MS, NOW, most)
+      expect((week[1] ?? 0) - (week[0] ?? 0)).toBe(2 * 24 * HOUR_MS)
+    }
+    // A fortnight on a wide chart: every two days too.
+    const wide = timeTicks(NOW - 7 * 24 * HOUR_MS, NOW + 7 * 24 * HOUR_MS, 6)
+    expect((wide[1] ?? 0) - (wide[0] ?? 0)).toBe(2 * 24 * HOUR_MS)
+  })
+
   it('stays on the local hour across a daylight-saving change', () => {
     const tz = process.env.TZ
     process.env.TZ = 'America/New_York'
@@ -153,12 +167,12 @@ describe('sharedPeak', () => {
 })
 
 describe('axisTime', () => {
-  it('shortens tick labels: a midnight to its day, an hour on the hour without minutes', () => {
+  it("shortens tick labels: a midnight to its day (today's to Today), an hour on the hour without minutes", () => {
     expect(axisTime('Tue 12:00 AM')).toBe('Tue')
     expect(axisTime('Oct 30, 12:00 AM')).toBe('Oct 30')
     expect(axisTime('6:00 PM')).toBe('6 PM')
     expect(axisTime('Sun 12:00 PM')).toBe('Sun 12 PM')
-    expect(axisTime('12:00 AM')).toBe('12 AM')
+    expect(axisTime('12:00 AM')).toBe('Today')
     expect(axisTime('6:30 PM')).toBe('6:30 PM')
   })
 })

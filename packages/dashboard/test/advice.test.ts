@@ -142,13 +142,13 @@ describe('adviceLine', () => {
   it('says how many to add and by when, or now', () => {
     const add = { kind: 'add' as const, count: 2, buyBy: NOW + 14 * H, now: 0.49, after: 1 }
     expect(adviceLine(add, names, NOW, clock)).toBe(
-      'Add 2 subscriptions by T+14h to have tokens 95% of the week (49% now)',
+      'Add 2 subscriptions by T+14h for tokens 95% of the week (49% now)',
     )
     expect(adviceLine({ ...add, count: 1, buyBy: NOW }, names, NOW, null)).toBe(
-      'Add 1 subscription now to have tokens 95% of the week (49% now)',
+      'Add 1 subscription now for tokens 95% of the week (49% now)',
     )
     expect(adviceLine(add, names, NOW, null)).toBe(
-      'Add 2 subscriptions in 14h to have tokens 95% of the week (49% now)',
+      'Add 2 subscriptions in 14h for tokens 95% of the week (49% now)',
     )
   })
   it('says which could be cancelled, after their weeks reset', () => {
@@ -162,10 +162,10 @@ describe('adviceLine', () => {
       after: 0.97,
     }
     expect(adviceLine(remove, names, NOW, clock)).toBe(
-      'Could cancel a after its week resets T+3h and b after its week resets T+5h and still have tokens 97% of the week',
+      'Could cancel, keeping tokens 97% of the week: a after T+3h and b after T+5h',
     )
     expect(adviceLine({ ...remove, remove: remove.remove.slice(0, 1) }, names, NOW, null)).toBe(
-      'Could cancel a after its week resets in 3h and still have tokens 97% of the week',
+      'Could cancel, keeping tokens 97% of the week: a in 3h',
     )
   })
   it('says nothing when the pool is right as it is or the forecast cannot tell', () => {

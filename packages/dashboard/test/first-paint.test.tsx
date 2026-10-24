@@ -16,6 +16,7 @@ import {
 } from '../src/core/index'
 import { createDemoSource } from '../src/demo/index'
 import { createDashboardHandler, DashboardPage, FIRST_QUERIES_BUDGET_MS } from '../src/next/index'
+import { ForecastHistory } from '../src/react/ForecastHistory'
 import { keepWhileLoading, type Loaded } from '../src/react/hooks'
 import { LineChart, seriesColors } from '../src/react/LineChart'
 import {
@@ -1118,12 +1119,30 @@ describe('the banner', () => {
     return container
   }
 
-  it('says the pace, and what weekly resets will leave unused', () => {
+  it('says the pace, and leaves what weekly resets will waste to the section below', () => {
     const text = render().textContent ?? ''
     // No availability line here (no detail): the pace stands alone.
     expect(text).toContain('Using 2.0% of a weekly limit and 0% of a 5-hour limit an hour')
+    expect(text).not.toMatch(/wasted|Unused/i)
+  })
+
+  it('says in the waste section what weekly resets will leave unused', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() =>
+      root.render(
+        <ForecastHistory
+          apiBase="/api"
+          now={NOW}
+          gaps={poolGaps(profiles, NOW, rates, NOW)}
+          profiles={profiles}
+        />,
+      ),
+    )
     // a resets in 10h with about 60% unused; b's reset is later, after a's work moves to it.
-    expect(text).toMatch(/Unused at weekly resets: \d+% · a \d+%/)
+    expect(container.textContent).toMatch(/Most wasted: a \d+%/)
   })
 
   it('switches the weekly chart between projected and no more use', () => {
@@ -1196,7 +1215,9 @@ describe("the banner's run-out line", () => {
         now={NOW}
       />,
     )
-    const facts = [...container.querySelectorAll('.cmd-facts li')].map((e) => e.textContent)
+    const facts = [...container.querySelectorAll('.cmd-forecast-facts li')].map(
+      (e) => e.textContent,
+    )
     expect(container.querySelector('.cmd-headline')?.textContent).toBe('Runs out in 1h for 2d')
     expect(facts.some((f) => / until /.test(f ?? ''))).toBe(false)
   })
@@ -1520,17 +1541,19 @@ describe('a subscription row', () => {
 })
 
 describe('the capacity advice', () => {
-  it('appears in the banner once the page is up, not in the first paint', async () => {
+  it('appears under the waste chart once the page is up, not in the first paint', async () => {
     const { container, serverText } = await hydrated(ZONE)
     expect(serverText).not.toMatch(/Could cancel|subscriptions? (by|now|in)/)
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    const facts = [...container.querySelectorAll('.cmd-facts li')].map((e) => e.textContent ?? '')
+    const facts = [...container.querySelectorAll('.cmd-forecast-facts li')].map(
+      (e) => e.textContent ?? '',
+    )
     // At the demo's pace (the 5-hour one following from the weekly) the pool covers 94% of the
     // week: one more subscription, by a clock time (in the browser's zone once it has taken over;
     // adviceLine's tests check the times).
-    const plan = /^Add 1 subscription by .+ to have tokens 95% of the week \(94% now\)$/
+    const plan = /^Add 1 subscription by .+ for tokens 95% of the week \(94% now\)$/
     expect(facts.some((f) => plan.test(f))).toBe(true)
   })
 })
@@ -1568,7 +1591,9 @@ describe('the capacity advice, from a late snapshot', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    const facts = [...container.querySelectorAll('.cmd-facts li')].map((e) => e.textContent ?? '')
+    const facts = [...container.querySelectorAll('.cmd-forecast-facts li')].map(
+      (e) => e.textContent ?? '',
+    )
     expect(facts.some((f) => f.startsWith('Add '))).toBe(false)
   })
 })

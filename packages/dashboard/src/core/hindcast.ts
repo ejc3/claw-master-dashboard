@@ -112,16 +112,20 @@ export function profilesAt(history: QuotaHistory, t: EpochMs): ProfileStatus[] {
   return profiles.sort((a, b) => a.profile.localeCompare(b.profile))
 }
 
-/** Waste and clipping from one forecast: what its weekly resets throw away, and its gaps' demand. */
-export function wasteAndClipping(gaps: PoolGaps, at: EpochMs): HindcastPoint {
-  const end = at + GAPS_HORIZON_MS
+/**
+ * Waste and clipping in one forecast from `at` to its horizon: what its weekly resets from then on
+ * throw away, and the demand its gaps leave unserved from then on (gap hours times the weekly
+ * pace). At the forecast's own clock, the whole week ahead; later, what is still to come.
+ */
+export function wasteAndClipping(gaps: PoolGaps, at: EpochMs = gaps.clock): HindcastPoint {
+  const end = gaps.clock + GAPS_HORIZON_MS
   let gapMs = 0
   for (const g of gaps.gaps)
     gapMs += Math.max(0, Math.min(g.end ?? end, end) - Math.max(g.start, at))
   const clippedHours = gapMs / HOUR_MS
   return {
     at,
-    wasted: gaps.unusedAtReset.reduce((sum, r) => sum + r.unused, 0),
+    wasted: gaps.unusedAtReset.reduce((sum, r) => (r.at >= at ? sum + r.unused : sum), 0),
     clipped: clippedHours * gaps.pace.weekly,
     clippedHours,
   }
@@ -150,7 +154,7 @@ export function hindcast(history: QuotaHistory, times: EpochMs[]): Array<Hindcas
         ? { weekly: 0, fiveHour: 0 }
         : poolGaps(profiles, t, smoothed, t).pace
     const pace = poolPace(measured, rates)
-    return wasteAndClipping(poolGaps(profiles, t, smoothed, t, false, pace), t)
+    return wasteAndClipping(poolGaps(profiles, t, smoothed, t, false, pace))
   })
 }
 

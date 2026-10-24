@@ -519,19 +519,42 @@ export function adviceLine(
   const target = formatPercent(COVERAGE_TARGET)
   if (advice.kind === 'add') {
     const subs = advice.count === 1 ? '1 subscription' : `${advice.count} subscriptions`
-    return `Add ${subs} ${at(advice.buyBy)} to have tokens ${target} of the week (${formatPercent(advice.now)} now)`
+    return `Add ${subs} ${at(advice.buyBy)} for tokens ${target} of the week (${formatPercent(advice.now)} now)`
   }
   if (advice.kind === 'remove') {
     const each = advice.remove.map((r) => {
       const name = names.get(r.profile) ?? r.profile
       if (r.after === null || r.after <= now) return name
-      return `${name} after its week resets${clock === null ? ` in ${formatCountdown(r.after - now)}` : ` ${clock(r.after)}`}`
+      return `${name} ${clock === null ? `in ${formatCountdown(r.after - now)}` : `after ${clock(r.after)}`}`
     })
     const list =
       each.length <= 1 ? each.join('') : `${each.slice(0, -1).join(', ')} and ${each.at(-1)}`
-    return `Could cancel ${list} and still have tokens ${formatPercent(advice.after)} of the week`
+    return `Could cancel, keeping tokens ${formatPercent(advice.after)} of the week: ${list}`
   }
   return null
+}
+
+/**
+ * Which weekly resets throw away the most at the forecast's pace, in words: the two largest, with
+ * when; null when nothing is thrown away. `clock` writes a time.
+ */
+export function unusedLine(
+  gaps: PoolGaps | null,
+  names: ReadonlyMap<string, string>,
+  clock: ((at: EpochMs) => string) | null,
+): string | null {
+  const lost = gaps?.unusedAtReset ?? []
+  if (lost.length === 0) return null
+  const largest = [...lost]
+    .sort((a, b) => b.unused - a.unused)
+    .slice(0, 2)
+    .map(
+      (r) =>
+        `${names.get(r.profile) ?? r.profile} ${formatPercent(r.unused)}${
+          clock === null ? '' : ` ${clock(r.at)}`
+        }`,
+    )
+  return `Most wasted: ${largest.join(', ')}`
 }
 
 export function PoolOutlook(props: {
@@ -541,11 +564,8 @@ export function PoolOutlook(props: {
   profiles: ProfileStatus[] | null
   now: EpochMs
   detail?: string | null
-  /** What to buy or cancel (capacityAdvice), when it has been worked out. */
-  advice?: CapacityAdvice | null
 }) {
   const { now } = props
-  const when = useWhen()
   // No clock times in the banner: the countdowns say it.
   const { tone, headline, facts } = gapsHeadline(props.gaps, now)
   const forecasting =
@@ -557,36 +577,13 @@ export function PoolOutlook(props: {
           props.gaps.pace.fiveHour,
         )} of a 5-hour limit an hour`
       : null
-  // Tokens left on the table: what weekly resets will throw away at this pace.
-  const lost = props.gaps?.unusedAtReset ?? []
-  const names = shortNames((props.profiles ?? []).map((p) => p.profile))
-  const unused =
-    forecasting && lost.length > 0
-      ? [
-          `Unused at weekly resets: ${formatPercent(lost.reduce((sum, r) => sum + r.unused, 0))} · ${[
-            ...lost,
-          ]
-            .sort((a, b) => b.unused - a.unused)
-            .slice(0, 2)
-            .map(
-              (r) =>
-                `${names.get(r.profile) ?? r.profile} ${formatPercent(r.unused)}${
-                  when === null ? '' : ` ${when(r.at, now)}`
-                }`,
-            )
-            .join(', ')}`,
-        ]
-      : []
   const status =
     props.detail == null
       ? pace === null
         ? []
         : [pace.charAt(0).toUpperCase() + pace.slice(1)]
       : [pace === null ? props.detail : `${props.detail} · ${pace}`]
-  const plan = forecasting
-    ? adviceLine(props.advice ?? null, names, now, when === null ? null : (t) => when(t, now))
-    : null
-  const lines = [...facts, ...status, ...unused, ...(plan === null ? [] : [plan])]
+  const lines = [...facts, ...status]
   return (
     <section className="cmd-pool" data-tone={tone} aria-labelledby="cmd-pool-headline">
       <div className="cmd-pool-head">

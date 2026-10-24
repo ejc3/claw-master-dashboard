@@ -3,7 +3,14 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { HOUR_MS } from '../src/core/index'
+import {
+  HOUR_MS,
+  type PoolGaps,
+  type ProfileStatus,
+  poolGaps,
+  WEEK_MS,
+  wasteAndClipping,
+} from '../src/core/index'
 import { createDemoSource } from '../src/demo/index'
 import { createDashboardHandler } from '../src/next/index'
 import { ForecastHistory } from '../src/react/ForecastHistory'
@@ -11,8 +18,15 @@ import { createPollStore, PollStoreContext } from '../src/react/pollStore'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-class SilentResizeObserver {
-  observe() {}
+/** Every chart is 600 pixels wide, so it draws. */
+class WideResizeObserver {
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  observe() {
+    this.callback(
+      [{ contentRect: { width: 600 } } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    )
+  }
   unobserve() {}
   disconnect() {}
 }
@@ -22,7 +36,7 @@ let roots: Root[] = []
 
 beforeEach(() => {
   vi.useFakeTimers({ now: T0 })
-  vi.stubGlobal('ResizeObserver', SilentResizeObserver)
+  vi.stubGlobal('ResizeObserver', WideResizeObserver)
 })
 
 afterEach(() => {
@@ -38,7 +52,7 @@ afterEach(() => {
  * unanswered until it is let go, as a page coming back from the background waits on its moved
  * ranges.
  */
-function mount() {
+function mount(gaps: PoolGaps | null = null) {
   let clock = T0
   const source = createDemoSource({ now: () => clock })
   const { GET } = createDashboardHandler({ source: () => source, authorize: () => true })
@@ -56,24 +70,31 @@ function mount() {
     act(() =>
       root.render(
         <PollStoreContext.Provider value={store}>
-          <ForecastHistory apiBase="/api" now={now} />
+          <ForecastHistory apiBase="/api" now={now} gaps={gaps} profiles={null} />
         </PollStoreContext.Provider>,
       ),
     )
   const settle = async () => {
     for (let i = 0; i < 5; i++) await act(() => vi.advanceTimersByTimeAsync(10))
   }
-  const rows = () => {
-    const toggle = [...container.querySelectorAll('button')].find(
-      (b) => b.textContent === 'Show table',
+  // Every chart's table, opened: the rows of each, newest first.
+  const tables = () => {
+    for (const toggle of [...container.querySelectorAll('button')]) {
+      if (toggle.textContent === 'Show table') act(() => toggle.click())
+    }
+    return [...container.querySelectorAll('table')].map((t) =>
+      [...t.querySelectorAll('tbody tr')].map((r) =>
+        [...r.querySelectorAll('td')].map((c) => c.textContent),
+      ),
     )
-    if (toggle !== undefined) act(() => toggle.click())
-    return [...container.querySelectorAll('tbody tr')].length
   }
+  const rows = () => tables()[0]?.length ?? 0
   return {
     render,
     settle,
     rows,
+    tables,
+    container,
     at: (t: number) => {
       clock = t
       vi.setSystemTime(t)
@@ -109,5 +130,40 @@ describe('ForecastHistory', () => {
     page.letGo()
     await page.settle()
     expect(page.rows()).toBe(169)
+  })
+
+  it('goes on a week ahead from the forecast now, with its gaps shaded and now marked', async () => {
+    // One subscription half used, resetting in 10 hours at 1% an hour: 40% thrown away then.
+    const profile: ProfileStatus = {
+      profile: 'a',
+      band: 'ok',
+      weekly: { usedFraction: 0.5, resetsAt: T0 + 10 * HOUR_MS, lengthMs: WEEK_MS },
+      fiveHour: null,
+      rateLimitedUntil: null,
+      tokenExpiresAt: null,
+      latencyMs: { p50: null, p95: null, p99: null },
+    }
+    const gaps = poolGaps([profile], T0, new Map([['a', 0.01]]), T0)
+    const page = mount(gaps)
+    page.render(T0)
+    await page.settle()
+    // Both charts mark now and shade the forecast's gaps.
+    expect(
+      [...page.container.querySelectorAll('.cmd-marker text')].map((t) => t.textContent),
+    ).toEqual(['Now', 'Now'])
+    expect(gaps.gaps.length).toBeGreaterThan(0)
+    expect(page.container.querySelectorAll('.cmd-band')).toHaveLength(2 * gaps.gaps.length)
+    const [wasted, clipped] = page.tables()
+    // 169 hours back, the forecast's own clock, and every hour of the week ahead after it.
+    expect(wasted).toHaveLength(169 + 1 + 168)
+    expect(clipped).toHaveLength(169 + 1 + 168)
+    // Newest first: the last hour ahead has nothing still to come, the clock's row the 40%.
+    expect(wasted?.[0]?.[1]).toBe('0%')
+    expect(clipped?.[0]?.[1]).toBe('0%')
+    expect(wasted?.[168]?.[1]).toBe('40%')
+    // At 1% an hour the new week runs out about 100 hours after the reset: that gap is clipped.
+    const now = wasteAndClipping(gaps)
+    expect(now.clippedHours).toBeGreaterThan(50)
+    expect(clipped?.[168]?.[1]).toBe(`${Math.round(now.clipped * 100)}%`)
   })
 })
