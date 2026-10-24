@@ -60,8 +60,10 @@ function mount(
   const source = createDemoSource({ now: () => clock })
   const { GET } = createDashboardHandler({ source: () => source, authorize: () => true })
   let held = false
+  let failing = false
   const waiting: Array<() => void> = []
   const store = createPollStore(async (url) => {
+    if (failing) return new Response('{"error":"down"}', { status: 502 })
     if (held) await new Promise<void>((resolve) => waiting.push(resolve))
     return GET(new Request(`http://dashboard.test${url}`))
   })
@@ -69,7 +71,8 @@ function mount(
   document.body.append(container)
   const root = createRoot(container)
   roots.push(root)
-  const render = (now: number) =>
+  // `null` for no replay: `undefined` would take the default.
+  const render = (now: number, replay: typeof forecastWith | null = forecastWith) =>
     act(() =>
       root.render(
         <PollStoreContext.Provider value={store}>
@@ -78,7 +81,7 @@ function mount(
             now={now}
             gaps={gaps}
             profiles={null}
-            {...(forecastWith === undefined ? {} : { forecastWith })}
+            {...(replay == null ? {} : { forecastWith: replay })}
           />
         </PollStoreContext.Provider>,
       ),
@@ -111,6 +114,9 @@ function mount(
     },
     hold: () => {
       held = true
+    },
+    fail: () => {
+      failing = true
     },
     letGo: () => {
       held = false
@@ -206,10 +212,29 @@ describe('ForecastHistory', () => {
     expect(clipped?.[168]?.[1]).toBe(`${Math.round(wasteAndClipping(gaps).clipped * 100)}%`)
   })
 
-  it("shows the week ahead and its title's value when last week's readings never come", async () => {
+  it('holds the charts back, with the tabs up, until last week is worked out', async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    const page = mount(gaps, () => gaps)
+    page.hold()
+    page.render(T0)
+    await page.settle()
+    // No half-drawn pair: a placeholder holds their place.
+    expect(page.container.querySelectorAll('figure')).toHaveLength(0)
+    expect(page.container.querySelector('.cmd-forecast-loading')).not.toBeNull()
+    const tab = (name: string) =>
+      [...page.container.querySelectorAll('button')].find((b) => b.textContent === name)
+    expect(tab('Current pace')?.getAttribute('aria-pressed')).toBe('true')
+    expect(tab('Like last week')?.disabled).toBe(true)
+    page.letGo()
+    await page.settle()
+    expect(page.container.querySelectorAll('figure')).toHaveLength(2)
+    expect(tab('Like last week')?.disabled).toBe(false)
+  })
+
+  it("shows the week ahead and its title's value when last week's readings fail", async () => {
     const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
     const page = mount(gaps)
-    page.hold()
+    page.fail()
     page.render(T0)
     await page.settle()
     expect(page.container.querySelector('figcaption')?.textContent).toBe(
@@ -260,5 +285,28 @@ describe('ForecastHistory', () => {
     )
     expect(nows).toHaveLength(2)
     expect(nows[0]).toBe(nows[1])
+  })
+
+  it('shows Current pace pressed when last week can no longer be replayed', async () => {
+    const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
+    const page = mount(gaps, () => gaps)
+    page.render(T0)
+    await page.settle()
+    const pressed = (name: string) =>
+      [...page.container.querySelectorAll('button')]
+        .find((b) => b.textContent === name)
+        ?.getAttribute('aria-pressed')
+    act(() =>
+      [...page.container.querySelectorAll('button')]
+        .find((b) => b.textContent === 'Like last week')
+        ?.click(),
+    )
+    expect(pressed('Like last week')).toBe('true')
+    // The replay goes (here, no way to run it): the charts are at the current pace, and so is
+    // the tab that shows pressed.
+    page.render(T0, null)
+    await page.settle()
+    expect(pressed('Current pace')).toBe('true')
+    expect(pressed('Like last week')).toBe('false')
   })
 })
