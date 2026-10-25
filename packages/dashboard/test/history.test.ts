@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DAY_MS,
   type EpochMs,
   FIVE_HOURS_MS,
   HOUR_MS,
@@ -7,12 +8,12 @@ import {
   measuredResets,
   type ProfileStatus,
   poolGaps,
+  replayedPace,
   replayWeekPerWindow,
   runningBlocked,
   runningWaste,
   type Series,
   WEEK_MS,
-  weekAgoPace,
 } from '../src/core/index'
 
 const T = Date.UTC(2026, 9, 20, 12)
@@ -91,7 +92,7 @@ describe('replayWeekPerWindow', () => {
   })
 })
 
-describe('weekAgoPace', () => {
+describe('replayedPace', () => {
   it("is the pool's use in the same hour a week before, the 5-hour pace through the ratio", () => {
     const start = T - WEEK_MS
     // a uses 2% an hour, b 1% an hour, through the hour a week before T.
@@ -102,12 +103,33 @@ describe('weekAgoPace', () => {
         start + 2 * HOUR_MS,
         (t) => 0.2 + ((t - start) / HOUR_MS) * perHour,
       )
-    const paceAt = weekAgoPace([used('a', 0.02), used('b', 0.01)], 0.25)
+    const paceAt = replayedPace([used('a', 0.02), used('b', 0.01)], 0.25, T, WEEK_MS)
     const pace = paceAt(T + 30 * 60_000)
     expect(pace.weekly).toBeCloseTo(0.03, 6)
     expect(pace.fiveHour).toBeCloseTo(pace.weekly / 0.25, 6)
     // No readings that hour: nothing used.
     expect(paceAt(T + 5 * HOUR_MS)).toEqual({ weekly: 0, fiveHour: 0 })
+    // A week on, the week replays again.
+    expect(paceAt(T + WEEK_MS + 30 * 60_000).weekly).toBeCloseTo(0.03, 6)
+  })
+
+  it('replays the last 24 whole hours every day, not the hour still being read', () => {
+    // 1% an hour through the day before T, then 9% in the half hour read so far.
+    const end = T + 30 * 60_000
+    const before = (t: EpochMs) => 0.2 + ((t - (T - DAY_MS)) / HOUR_MS) * 0.01
+    const series = every('a', T - DAY_MS - HOUR_MS, end, (t) =>
+      t <= T ? before(t) : before(T) + ((t - T) / STEP) * 0.03,
+    )
+    const paceAt = replayedPace([series], 0.25, end, DAY_MS)
+    // T + 3h is the hour 21 hours before T, a day on; and again each day after.
+    for (const day of [0, 1, 6]) {
+      expect(paceAt(T + 3 * HOUR_MS + day * DAY_MS + 60_000).weekly).toBeCloseTo(0.01, 6)
+    }
+    // The hour T falls in replays the one a day before, not its own 9% so far.
+    expect(paceAt(end).weekly).toBeCloseTo(0.01, 6)
+    expect(paceAt(T + DAY_MS).weekly).toBeCloseTo(0.01, 6)
+    // The last whole hour ends at T's reading: none of the use after it.
+    expect(paceAt(T + 23 * HOUR_MS).weekly).toBeCloseTo(0.01, 6)
   })
 })
 

@@ -1,5 +1,5 @@
 import { type PoolGaps, riseOver } from './forecast'
-import { type EpochMs, HOUR_MS, type Series, WEEK_MS } from './types'
+import { type EpochMs, HOUR_MS, type Series } from './types'
 
 // Last week from the quota readings: what weekly resets threw away, when no subscription could
 // take work, and the pool's use hour by hour to replay it.
@@ -18,27 +18,34 @@ export interface QuotaHistory {
 /** How far back last week is read: a week, before the two days its pace is measured over. */
 export const HISTORY_SPAN_MS = 7 * 24 * HOUR_MS
 
+/** The spans of readings a forecast can replay: the last day's, or the last week's. */
+export const DAY_MS = 24 * HOUR_MS
+
 /**
- * Last week's pace, hour by hour: at any moment, what the pool used of its weekly limits in the
- * same hour a week before (each subscription's rise in that hour, a reset's fall counted as new
- * use), and the 5-hour pace that makes through what a full 5-hour window costs of the week. An
+ * The pool's use over the last `periodMs` of whole hours before `end`, replayed hour by hour and
+ * over again: at any moment, what the pool used of its weekly limits in the same hour one period,
+ * or as many as reach back into those hours, before (each subscription's rise in that hour, a
+ * reset's fall counted as new use), and the 5-hour pace that makes through what a full 5-hour
+ * window costs of the week. The hour `end` falls in is still being read, so it is left out. An
  * hour with no readings used nothing. Hours the pool was out used less than was asked of it.
  */
-export function weekAgoPace(
+export function replayedPace(
   weeklyUsed: Series[],
   weekPerWindow: number | null,
+  end: EpochMs,
+  periodMs: number,
 ): (t: EpochMs) => PoolGaps['pace'] {
-  const byHour = new Map<EpochMs, number>()
   const hour = (t: EpochMs) => Math.floor(t / HOUR_MS) * HOUR_MS
-  const hours = new Set<EpochMs>()
-  for (const s of weeklyUsed) for (const [t] of s.points) hours.add(hour(t))
-  for (const h of hours) {
+  const start = hour(end) - periodMs
+  const byHour = new Map<EpochMs, number>()
+  for (let h = start; h < start + periodMs; h += HOUR_MS) {
     let rise = 0
     for (const s of weeklyUsed) rise += riseOver(s.points, h + HOUR_MS, HOUR_MS, 0)?.rise ?? 0
     byHour.set(h, rise)
   }
   return (t) => {
-    const weekly = byHour.get(hour(t - WEEK_MS)) ?? 0
+    const offset = (((hour(t) - start) % periodMs) + periodMs) % periodMs
+    const weekly = byHour.get(start + offset) ?? 0
     return {
       weekly,
       fiveHour: weekPerWindow !== null && weekPerWindow > 0 ? weekly / weekPerWindow : 0,

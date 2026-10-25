@@ -76,15 +76,16 @@ export {
   weekUsedUp,
 } from './headline'
 export {
+  DAY_MS,
   HISTORY_SPAN_MS,
   measuredBlocked,
   measuredResets,
   type QuotaHistory,
   type ResetWaste,
+  replayedPace,
   replayWeekPerWindow,
   runningBlocked,
   runningWaste,
-  weekAgoPace,
 } from './history'
 export {
   EVEN_MARGIN,
