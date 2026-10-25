@@ -22,7 +22,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "^19.2.0",
-    "typescript": "6.0.3",
+    "typescript": "7.1.0-beta",
     "wrangler": "4.149.0"
   }
 }
