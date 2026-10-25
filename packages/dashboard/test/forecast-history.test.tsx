@@ -3,7 +3,14 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { HOUR_MS, type PoolGaps, type ProfileStatus, poolGaps, WEEK_MS } from '../src/core/index'
+import {
+  DAY_MS,
+  HOUR_MS,
+  type PoolGaps,
+  type ProfileStatus,
+  poolGaps,
+  WEEK_MS,
+} from '../src/core/index'
 import { createDemoSource } from '../src/demo/index'
 import { createDashboardHandler } from '../src/next/index'
 import { ForecastHistory } from '../src/react/ForecastHistory'
@@ -185,7 +192,7 @@ describe('ForecastHistory', () => {
     expect(page.container.querySelector('.cmd-forecast-loading')).not.toBeNull()
     const tab = (name: string) =>
       [...page.container.querySelectorAll('button')].find((b) => b.textContent === name)
-    expect(tab('Current pace')?.getAttribute('aria-pressed')).toBe('true')
+    expect(tab('Like last 24 hours')?.getAttribute('aria-pressed')).toBe('true')
     expect(tab('Like last week')?.disabled).toBe(true)
     page.letGo()
     await page.settle()
@@ -205,34 +212,37 @@ describe('ForecastHistory', () => {
     expect(page.tables().at(-1)).toHaveLength(2 * 168 + 3)
   })
 
-  it('switches the week ahead to last week replayed, once last week is in', async () => {
+  it('forecasts with the last 24 hours replayed, or last week, once the readings are in', async () => {
     const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
-    const paces: Array<(t: number) => PoolGaps['pace']> = []
-    const replayed: PoolGaps = {
+    const withWaste = (unused: number): PoolGaps => ({
       ...gaps,
-      unusedAtReset: [{ profile: 'a', at: T0 + 10 * HOUR_MS, unused: 0.9 }],
-    }
-    const page = mount(gaps, (paceAt) => {
-      paces.push(paceAt)
-      return replayed
+      unusedAtReset: [{ profile: 'a', at: T0 + 10 * HOUR_MS, unused }],
     })
+    // The last day's use repeats every day; last week's, with the demo's resets in it, does not.
+    const daily = (paceAt: (t: number) => PoolGaps['pace']) => {
+      for (let t = T0; t < T0 + WEEK_MS - DAY_MS; t += HOUR_MS) {
+        if (paceAt(t).weekly !== paceAt(t + DAY_MS).weekly) return false
+      }
+      return true
+    }
+    const page = mount(gaps, (paceAt) => withWaste(daily(paceAt) ? 0.7 : 0.9))
+    const title = () => page.container.querySelector('figcaption')?.textContent ?? ''
+    page.hold()
     page.render(T0)
     await page.settle()
-    const title = () => page.container.querySelector('figcaption')?.textContent ?? ''
-    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 40% next week/)
+    page.letGo()
+    await page.settle()
+    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 70% next week/)
+    expect(page.container.textContent).toContain('Most wasted: a 70%')
     const tab = [...page.container.querySelectorAll('button')].find(
       (b) => b.textContent === 'Like last week',
     )
-    expect(tab).toBeDefined()
-    // The pace it was given is last week's, an hour at a time.
-    expect(paces.length).toBeGreaterThan(0)
-    expect(paces.at(-1)?.(T0).weekly).toBeGreaterThanOrEqual(0)
     act(() => tab?.click())
     expect(title()).toMatch(/^Wasted at resets · \d+% last week · 90% next week/)
     expect(page.container.textContent).toContain('Most wasted: a 90%')
   })
 
-  it('shows Current pace pressed when last week can no longer be replayed', async () => {
+  it('shows the last 24 hours pressed when last week can no longer be replayed', async () => {
     const gaps = poolGaps([halfUsed(T0)], T0, new Map([['a', 0.01]]), T0)
     const page = mount(gaps, () => gaps)
     page.render(T0)
@@ -247,11 +257,11 @@ describe('ForecastHistory', () => {
         ?.click(),
     )
     expect(pressed('Like last week')).toBe('true')
-    // The replay goes (here, no way to run it): the charts are at the current pace, and so is
-    // the tab that shows pressed.
+    // The replay goes (here, no way to run it): the charts are at the headline's pace, the last
+    // day's average, and the tab that shows pressed is the last day's.
     page.render(T0, null)
     await page.settle()
-    expect(pressed('Current pace')).toBe('true')
+    expect(pressed('Like last 24 hours')).toBe('true')
     expect(pressed('Like last week')).toBe('false')
   })
 

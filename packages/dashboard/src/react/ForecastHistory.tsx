@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import {
   type CapacityAdvice,
+  DAY_MS,
   type EpochMs,
   GAPS_HORIZON_MS,
   HOUR_MS,
@@ -8,12 +9,12 @@ import {
   measuredResets,
   type PoolGaps,
   type ProfileStatus,
+  replayedPace,
   replayWeekPerWindow,
   runningBlocked,
   runningWaste,
   type Series,
   WEEK_MS,
-  weekAgoPace,
   weekPerFiveHourWindow,
 } from '../core'
 import { useReadings, useWhen } from './hooks'
@@ -54,20 +55,24 @@ function useHistory(
 
 /**
  * Tokens wasted and time without tokens over the two weeks around now, as running totals from a
- * week ago: measured from the readings up to now, forecast after it, at the current pace or with
- * last week's use replayed hour by hour.
+ * week ago: measured from the readings up to now, forecast after it with the last 24 hours' use or
+ * last week's replayed hour by hour.
  */
 export function ForecastHistory(props: {
   apiBase: string
   now: EpochMs
-  /** The forecast now (the headline's): the week ahead. */
+  /**
+   * The forecast now (the headline's, at the last day's average pace): the week ahead until the
+   * readings to replay are in, or when they cannot be read.
+   */
   gaps: PoolGaps | null
   /** What to buy or cancel (capacityAdvice), when it has been worked out. */
   advice?: CapacityAdvice | null
   profiles: ProfileStatus[] | null
   /**
    * The headline's forecast run again at a pace that changes hour by hour (poolGaps' paceAt), for
-   * the week ahead like last week. Without it, only the current pace is shown.
+   * the week ahead with the last day's or last week's use replayed. Without it, only the
+   * headline's is shown.
    */
   forecastWith?: (paceAt: (t: EpochMs) => PoolGaps['pace']) => PoolGaps
 }) {
@@ -83,27 +88,33 @@ export function ForecastHistory(props: {
   const historyFailed = weekly.failed || resets.failed || five.failed
   const measuring = weeklyUsed !== null && weeklyResets !== null && fiveUsed !== null
 
-  // Two forecasts of the week ahead: the headline's, at the current pace, and one that replays
-  // last week hour by hour (from the same readings, once they are in).
-  const [model, setModel] = useState<'pace' | 'lastWeek'>('pace')
-  const lastWeekPace = useMemo(() => {
+  // Two forecasts of the week ahead, from the same readings once they are in: the last 24 hours
+  // replayed hour by hour, every day, or last week's hours replayed once.
+  const [model, setModel] = useState<'lastDay' | 'lastWeek'>('lastDay')
+  const paces = useMemo(() => {
     if (weeklyUsed === null || fiveUsed === null) return null
     const end = Math.min(weeklyUsed.end, fiveUsed.end)
     const ratio = replayWeekPerWindow(
       weekPerFiveHourWindow(weeklyUsed.series, fiveUsed.series, end),
       gaps?.pace ?? null,
     )
-    return ratio === null ? null : weekAgoPace(weeklyUsed.series, ratio)
+    if (ratio === null) return null
+    return {
+      lastDay: replayedPace(weeklyUsed.series, ratio, weeklyUsed.end, DAY_MS),
+      lastWeek: replayedPace(weeklyUsed.series, ratio, weeklyUsed.end, WEEK_MS),
+    }
   }, [weeklyUsed, fiveUsed, gaps])
-  const lastWeekGaps = useMemo(
+  const replaying = forecastWith !== undefined && paces !== null && forecastingGaps(gaps)
+  const likeLastWeek = replaying && model === 'lastWeek'
+  // Only the forecast shown is run: each steps through a week.
+  const replayed = useMemo(
     () =>
-      forecastWith === undefined || lastWeekPace === null || !forecastingGaps(gaps)
+      !replaying || forecastWith === undefined || paces === null
         ? null
-        : forecastWith(lastWeekPace),
-    [forecastWith, lastWeekPace, gaps],
+        : forecastWith(likeLastWeek ? paces.lastWeek : paces.lastDay),
+    [replaying, forecastWith, paces, likeLastWeek],
   )
-  const likeLastWeek = model === 'lastWeek' && lastWeekGaps !== null
-  const shown = likeLastWeek ? lastWeekGaps : gaps
+  const shown = replayed ?? gaps
 
   // The two weeks around now, hour by hour, and the forecast's clock between them.
   const clock = shown?.clock ?? now
@@ -184,15 +195,15 @@ export function ForecastHistory(props: {
       {forecastingGaps(gaps) && (
         <fieldset className="cmd-segmented cmd-capacity-tabs">
           <legend className="cmd-visually-hidden">Week ahead</legend>
-          {/* Pressed is the forecast shown: last week's falls back to the pace when it goes. */}
-          <button type="button" aria-pressed={!likeLastWeek} onClick={() => setModel('pace')}>
-            Current pace
+          {/* Pressed is the forecast shown: last week's falls back to the last day's when it goes. */}
+          <button type="button" aria-pressed={!likeLastWeek} onClick={() => setModel('lastDay')}>
+            Like last 24 hours
           </button>
           <button
             type="button"
             aria-pressed={likeLastWeek}
-            disabled={lastWeekGaps === null}
-            title={lastWeekGaps === null ? "Waiting for last week's readings" : undefined}
+            disabled={!replaying}
+            title={replaying ? undefined : "Waiting for last week's readings"}
             onClick={() => setModel('lastWeek')}
           >
             Like last week
@@ -237,7 +248,8 @@ export function ForecastHistory(props: {
       <p className="cmd-capacity-note">
         Running totals from a week ago: measured before now, forecast after · wasted: what each
         weekly reset threw away, 100% being one subscription's week · without tokens: hours no
-        subscription could take work · like last week: last week's use replayed hour by hour
+        subscription could take work · ahead: the last 24 hours' use, or last week's, replayed hour
+        by hour
       </p>
     </section>
   )
