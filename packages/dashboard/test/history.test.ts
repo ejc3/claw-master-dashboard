@@ -116,8 +116,9 @@ describe('replayedPace', () => {
   it('replays the last 24 whole hours every day, not the hour still being read', () => {
     // 1% an hour through the day before T, then 9% in the half hour read so far.
     const end = T + 30 * 60_000
+    const before = (t: EpochMs) => 0.2 + ((t - (T - DAY_MS)) / HOUR_MS) * 0.01
     const series = every('a', T - DAY_MS - HOUR_MS, end, (t) =>
-      t < T ? 0.2 + ((t - (T - DAY_MS)) / HOUR_MS) * 0.01 : 0.6 + ((t - T) / STEP) * 0.03,
+      t <= T ? before(t) : before(T) + ((t - T) / STEP) * 0.03,
     )
     const paceAt = replayedPace([series], 0.25, end, DAY_MS)
     // T + 3h is the hour 21 hours before T, a day on; and again each day after.
@@ -127,6 +128,8 @@ describe('replayedPace', () => {
     // The hour T falls in replays the one a day before, not its own 9% so far.
     expect(paceAt(end).weekly).toBeCloseTo(0.01, 6)
     expect(paceAt(T + DAY_MS).weekly).toBeCloseTo(0.01, 6)
+    // The last whole hour ends at T's reading: none of the use after it.
+    expect(paceAt(T + 23 * HOUR_MS).weekly).toBeCloseTo(0.01, 6)
   })
 })
 
