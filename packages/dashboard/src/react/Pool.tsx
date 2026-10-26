@@ -10,7 +10,6 @@ import {
   fiveHourLeft,
   formatCountdown,
   formatPercent,
-  formatWhen,
   gapsHeadline,
   HOUR_MS,
   hasHeadroom,
@@ -348,7 +347,9 @@ export function PoolAccounts(props: {
               const fiveUsed = share(five?.usedFraction)
               const left = fiveHourLeft(shown, props.now)
               if (weekUsedUp(shown, props.now) || blocked(shown, props.now) !== null) return null
-              if (five === null || five.resetsAt === null || five.resetsAt <= props.now) return null
+              // An unknown reset time still leaves the reading: only a window that has reset is out.
+              if (five === null || (five.resetsAt !== null && five.resetsAt <= props.now))
+                return null
               if (fiveUsed === null || left === null || left >= 1 - fiveUsed - 0.005) return null
               return (
                 <li>{`The week has ${formatPercent(left)} left, so the 5-hour window can use only that`}</li>
@@ -411,7 +412,14 @@ function capacitySeries(gaps: PoolGaps | null, now: EpochMs, resets: EpochMs[]) 
     weeklyBy: by('weeklyBy', weeklyUntil, HOUR_MS),
     fiveHour: points('fiveHour', fiveUntil, TRACE_STEP_MS),
     fiveHourBy: by('fiveHourBy', fiveUntil, TRACE_STEP_MS),
-    bands: gaps.gaps.map((g) => ({ start: g.start, end: g.end ?? horizonEnd })),
+    // Out only until a 5-hour window resets, in its own tone: the weeks still have room then.
+    bands: gaps.gaps.map((g) => ({
+      start: g.start,
+      end: g.end ?? horizonEnd,
+      ...(g.endsWith === 'fiveHour'
+        ? { tone: 'secondary' as const, label: 'None available · 5-hour limits full' }
+        : {}),
+    })),
     capacity: gaps.capacity,
     subscriptionsShown: gaps.subscriptions,
   }
@@ -432,6 +440,8 @@ export function CapacityOutlook(props: {
   now: EpochMs
 }) {
   const [weeklyView, setWeeklyView] = useState<'projected' | 'stopped'>('projected')
+  // The viewer's clock, once known (the server may not know their zone): reset times wait for it.
+  const when = useWhen()
   // Moves on a sample at a time, so the charts redraw when the data does, not every second.
   const now = Math.floor(props.now / TRACE_STEP_MS) * TRACE_STEP_MS
   const resetKey = (props.profiles ?? []).map((p) => p.weekly.resetsAt ?? '').join(',')
@@ -468,7 +478,7 @@ export function CapacityOutlook(props: {
     const weekResets = new Map(bySubscription.map((s) => [s.name, s.weekResets]))
     const weekBack = (name: string, index: number) => {
       const at = weekResets.get(name)?.[index] ?? null
-      return at === null ? null : `– ${formatWhen(at, props.now)}`
+      return at === null || when === null ? null : when(at, props.now)
     }
     const current = total.filter(([t]) => t <= props.now).at(-1)?.[1] ?? total[0]?.[1]
     return total.length < 2 ? null : (
@@ -489,7 +499,7 @@ export function CapacityOutlook(props: {
         height={height}
         now={now}
         stacked
-        {...(key === 'weekly' ? { note: weekBack } : {})}
+        {...(key === 'weekly' ? { note: weekBack, noteLabel: 'resets' } : {})}
       />
     )
   }
@@ -522,7 +532,8 @@ export function CapacityOutlook(props: {
         {shown.capacity > 1
           ? `, so ${shown.capacity} subscriptions make ${asPercent(shown.capacity)}`
           : ''}{' '}
-        · a 5-hour window can use no more than its week has left · shaded: none can take work
+        · a 5-hour window can use no more than its week has left · shaded: none can take work, red
+        until a week resets (or Anthropic's refusal ends), amber until a 5-hour window resets
       </p>
     </div>
   )

@@ -622,6 +622,18 @@ function DashboardBody(props: DashboardProps) {
           {rangeControl}
         </div>
 
+        {/* Who and what used the tokens first, then the pool's subscriptions over time. */}
+        <Breakdown
+          apiBase={apiBase}
+          range={range}
+          stepSeconds={chosen.stepSeconds}
+          rangeWords={rangeWords}
+          per={chosen.per}
+          tokenChoice={tokenChoice}
+          now={now}
+          colors={subscriptionColors}
+        />
+
         <div className="cmd-charts">
           <div>
             {(showTokens ? tokensByProfile.loaded : byProfile).state === 'error' && (
@@ -672,17 +684,6 @@ function DashboardBody(props: DashboardProps) {
             </div>
           )}
         </div>
-
-        <Breakdown
-          apiBase={apiBase}
-          range={range}
-          stepSeconds={chosen.stepSeconds}
-          rangeWords={rangeWords}
-          per={chosen.per}
-          tokenChoice={tokenChoice}
-          now={now}
-          colors={subscriptionColors}
-        />
 
         {/* Each subscription in detail, below the traffic: the outlook above already sums them up. */}
         <section className="cmd-panel cmd-stream" aria-labelledby="cmd-subscriptions">

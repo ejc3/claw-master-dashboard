@@ -889,9 +889,24 @@ export function forecastHeadline(
  * time no subscription can take work, whether a weekly or a 5-hour limit (or a rate limit) is
  * what stops each, and how long until the first of them can take work again, which needs room
  * in both its limits. "Runs out in 9h 57m for 1d 19h", then the clock times when the viewer's
- * zone is known ("22:43 until Mon 17:59"). Partial when some subscriptions have no weekly
+ * zone is known ("22:43 until Mon 17:59"). With more than one gap in the next 24 hours, how
+ * long of those the pool is out in all ("… for 1h 31m and 15h 13m of the next 24 hours"): the
+ * first gap's end is not the end of the trouble. Partial when some subscriptions have no weekly
  * reading, so they may still have room.
  */
+/** " and 15h 13m of the next 24 hours" when more than one gap falls in them; else nothing. */
+function outOfDay(gaps: PoolGap[], now: EpochMs): string {
+  const until = now + 24 * HOUR_MS
+  // A gap with no known end lasts the rest of the day.
+  const within = gaps.filter((g) => g.start < until && (g.end === null || g.end > now))
+  if (within.length < 2) return ''
+  const out = within.reduce(
+    (sum, g) => sum + Math.min(g.end ?? until, until) - Math.max(g.start, now),
+    0,
+  )
+  return ` and ${formatCountdown(out)} of the next 24 hours`
+}
+
 export function gapsHeadline(
   g: PoolGaps | null,
   now: EpochMs,
@@ -936,5 +951,9 @@ export function gapsHeadline(
           ? []
           : [`Back ${clock(end)}`]
         : [`${clock(first.start)} until ${end === null ? 'unknown' : clock(end)}`]
-  return { tone: out && !partial ? 'error' : 'warning', headline, facts: [...times, ...among] }
+  return {
+    tone: out && !partial ? 'error' : 'warning',
+    headline: `${headline}${outOfDay(g.gaps, now)}`,
+    facts: [...times, ...among],
+  }
 }

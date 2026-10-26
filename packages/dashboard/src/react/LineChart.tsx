@@ -32,7 +32,11 @@ interface Props {
   /** Clock for axis and tooltip labels. */
   now: EpochMs
   /** Spans of time shaded behind the lines (e.g. when no subscription can take work). */
-  bands?: Array<{ start: EpochMs; end: EpochMs }>
+  /**
+   * A band may say what it means itself (`label`, else `bandLabel`) and be shaded in the
+   * secondary tone, to tell two kinds apart (e.g. out on 5-hour limits, not on weeks).
+   */
+  bands?: Array<{ start: EpochMs; end: EpochMs; label?: string; tone?: 'secondary' }>
   /** What a band means, said in the readout and as a table column ("No subscription can …"). */
   bandLabel?: string
   /** The axis maximum, when the scale is fixed (e.g. the pool's full capacity). */
@@ -43,8 +47,12 @@ interface Props {
   stacked?: boolean
   /** A moment marked across the plot with a labelled line, e.g. where measured turns to forecast. */
   marker?: { at: EpochMs; label: string }
-  /** A word on a series at the sample read, after its name in the readout (e.g. when it resets). */
+  /**
+   * A word on a series at the sample read, after its name in the readout ("alpha – Sun 8:02 PM"),
+   * and in the spoken readout after its value, after `noteLabel` ("alpha 0% (resets Sun 8:02 PM)").
+   */
   note?: (key: string, index: number) => string | null
+  noteLabel?: string
 }
 
 const PAD = { top: 8, right: 8, bottom: 22, left: 44 }
@@ -143,6 +151,7 @@ export const LineChart = memo(function LineChart({
   max: fixedMax,
   marker,
   note,
+  noteLabel = '',
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>()
   // Series turned off from the legend; at least one always stays on.
@@ -260,18 +269,25 @@ export const LineChart = memo(function LineChart({
   const readIndex = active ?? times.length - 1
   const readTime = times[readIndex]
   // Wall-clock text waits for hydration: the server does not know the viewer's time zone.
-  const inBand = (t: EpochMs) => bands.some((b) => t >= b.start && t < b.end)
+  const bandAt = (t: EpochMs) => bands.find((b) => t >= b.start && t < b.end)
   const valueText =
     readTime === undefined
       ? 'No data'
       : `${when === null ? 'Latest' : when(readTime, now)}: ${series
           .filter((s) => !off.has(s.key))
-          .map((s) => `${s.label} ${format(s.points[readIndex]?.[1] ?? 0)}`)
+          .map((s) => {
+            const said = note?.(s.key, readIndex) ?? null
+            const value = `${s.label} ${format(s.points[readIndex]?.[1] ?? 0)}`
+            return said === null ? value : `${value} (${noteLabel ? `${noteLabel} ` : ''}${said})`
+          })
           .join(', ')}${
           stacked && series.length > 1
             ? `, total ${format(tops[series.length - 1]?.[readIndex] ?? 0)}`
             : ''
-        }${inBand(readTime) ? `; ${bandLabel}` : ''}`
+        }${(() => {
+          const band = bandAt(readTime)
+          return band === undefined ? '' : `; ${band.label ?? bandLabel}`
+        })()}`
   const tooltipLeft = activeTime === null ? 0 : x(activeTime)
   const flip = tooltipLeft > width / 2
 
@@ -335,7 +351,14 @@ export const LineChart = memo(function LineChart({
                         {format(s.points[i]?.[1] ?? 0)}
                       </td>
                     ))}
-                    {bands.length > 0 && <td>{inBand(t) ? 'Yes' : ''}</td>}
+                    {bands.length > 0 && (
+                      <td>
+                        {(() => {
+                          const band = bandAt(t)
+                          return band === undefined ? '' : (band.label ?? 'Yes')
+                        })()}
+                      </td>
+                    )}
                   </tr>
                 ))}
             </tbody>
@@ -385,6 +408,7 @@ export const LineChart = memo(function LineChart({
                   <rect
                     key={b.start}
                     className="cmd-band"
+                    data-tone={b.tone}
                     x={from}
                     y={PAD.top}
                     width={to - from}
@@ -530,7 +554,9 @@ export const LineChart = memo(function LineChart({
                     {s.label}
                     {(() => {
                       const said = note?.(s.key, active ?? 0) ?? null
-                      return said === null ? null : <span className="cmd-tooltip-note">{said}</span>
+                      return said === null ? null : (
+                        <span className="cmd-tooltip-note">{`– ${said}`}</span>
+                      )
                     })()}
                     <b>{format(s.points[active ?? 0]?.[1] ?? 0)}</b>
                   </div>

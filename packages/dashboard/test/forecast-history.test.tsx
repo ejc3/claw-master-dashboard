@@ -172,7 +172,10 @@ describe('ForecastHistory', () => {
     )
     expect(hours).toBeGreaterThan(10)
     expect(captions[1]).toMatch(new RegExp(`· ${Math.round(hours)}h next week$`))
-    expect(page.container.querySelectorAll('.cmd-band').length).toBeGreaterThanOrEqual(2)
+    // Shaded on the time-without-tokens chart only.
+    const [wastedChart, blockedChart] = [...page.container.querySelectorAll('figure')]
+    expect(wastedChart?.querySelectorAll('.cmd-band')).toHaveLength(0)
+    expect(blockedChart?.querySelectorAll('.cmd-band').length).toBeGreaterThanOrEqual(1)
     // Oldest first: 168 hours to 12:00, the clock (12:05) at 169, 13:00 at 170. The waste steps
     // up by 40% at the reset (22:05), so first at 23:00, index 180, and not before.
     const percent = (row: Array<string | null> | undefined) => Number.parseFloat(row?.[1] ?? '')

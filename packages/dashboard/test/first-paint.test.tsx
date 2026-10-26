@@ -163,14 +163,15 @@ describe('the first paint', () => {
       /: Subscriptions 4$/,
     )
     // Each holds its plot's height (the capacity charts are shorter) before it is measured.
-    // The stacked weekly chart is a little taller than the 5-hour one.
+    // The stacked weekly chart is a little taller than the 5-hour one. The tokens by person
+    // (180px) come before the subscriptions' charts.
     expect(charts.map((chart) => chart.style.minHeight)).toEqual([
       '180px',
       '160px',
+      '180px',
       '200px',
       '200px',
       '120px',
-      '180px',
     ])
   })
 
@@ -200,6 +201,24 @@ describe('the first paint', () => {
     expect(container.textContent).not.toContain('Loading…')
     // The same numbers: computed over the hours the kept answer covers, not the new range's.
     expect(kpiValues(container)).toEqual(before)
+  })
+
+  it("names reset times in the weekly readout only in the viewer's own zone", async () => {
+    const weeklyReadout = (html: string) => {
+      const box = document.createElement('div')
+      box.innerHTML = html
+      const weekly = [...box.querySelectorAll('figure')].find((f) =>
+        f.querySelector('figcaption')?.textContent?.startsWith('Weekly limit left'),
+      )
+      return weekly?.querySelector('[role="slider"]')?.getAttribute('aria-valuetext') ?? ''
+    }
+    // Without the zone, the server writes no reset times: the browser's would differ.
+    expect(weeklyReadout(renderToString(await serverPage(undefined)))).not.toContain('resets')
+    // With it, they are the viewer's.
+    const zoned = weeklyReadout(renderToString(await serverPage(ZONE)))
+    expect(zoned).toMatch(/\(resets [^)]+\)/)
+    const resets = [...zoned.matchAll(/\(resets ([^)]+)\)/g)].map((m) => m[1])
+    expect(resets.length).toBeGreaterThan(0)
   })
 
   it('changes nothing when the browser clock is behind the server, across a step boundary', async () => {
@@ -825,7 +844,9 @@ describe('the capacity charts', () => {
     expect(readout(weekly, 'End').getAttribute('aria-valuemax')).toBe(String(72))
     expect(readout(five, 'End').getAttribute('aria-valuemax')).toBe(String(5 * 6 - 1))
     // The last weekly point is half a day after b's reset at 60 hours: b is whole again.
-    expect(readout(weekly, 'End').getAttribute('aria-valuetext')).toMatch(/b 100%, total 136%$/)
+    expect(readout(weekly, 'End').getAttribute('aria-valuetext')).toMatch(
+      /b 100% \(resets [^)]+\), total 136%$/,
+    )
     // The first points: what is left now, in one subscription's limit (two half-used: 100%).
     expect(readout(weekly, 'Home').getAttribute('aria-valuetext')).toMatch(/100%$/)
     // Each 5-hour window as far as its half-used week: a 50%, b 50%.
@@ -871,11 +892,101 @@ describe('a gap in the capacity charts', () => {
       `a– ${formatWhen(NOW + 30 * HOUR_MS, NOW)}0%`,
       `b– ${formatWhen(NOW + 60 * HOUR_MS, NOW)}0%`,
     ])
+    // And the spoken readout says them too.
+    expect(slider.getAttribute('aria-valuetext')).toContain(
+      `a 0% (resets ${formatWhen(NOW + 30 * HOUR_MS, NOW)})`,
+    )
     // And at the last point, after the gap, it does not.
     act(() => {
       slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
     })
     expect(slider.getAttribute('aria-valuetext')).not.toContain('None available')
+  })
+})
+
+describe('a 5-hour gap in the capacity charts', () => {
+  // Measured 600 pixels wide, so the charts draw their bands.
+  class WideResizeObserver {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe() {
+      this.callback(
+        [{ contentRect: { width: 600 } } as ResizeObserverEntry],
+        this as unknown as ResizeObserver,
+      )
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', WideResizeObserver)
+  })
+
+  it('is shaded in its own tone and named in the readout, apart from a weekly one', () => {
+    // a's week has room but its 5-hour window is full for two hours; b's week is full for 30.
+    const profiles: ProfileStatus[] = [
+      {
+        profile: 'a',
+        band: 'ok',
+        weekly: { usedFraction: 0.5, resetsAt: NOW + 100 * HOUR_MS, lengthMs: 168 * HOUR_MS },
+        fiveHour: { usedFraction: 1, resetsAt: NOW + 2 * HOUR_MS, lengthMs: 5 * HOUR_MS },
+        rateLimitedUntil: null,
+        tokenExpiresAt: null,
+        latencyMs: { p50: null, p95: null, p99: null },
+      },
+      {
+        profile: 'b',
+        band: 'ok',
+        weekly: { usedFraction: 1, resetsAt: NOW + 30 * HOUR_MS, lengthMs: 168 * HOUR_MS },
+        fiveHour: null,
+        rateLimitedUntil: null,
+        tokenExpiresAt: null,
+        latencyMs: { p50: null, p95: null, p99: null },
+      },
+    ]
+    const gaps = poolGaps(profiles, NOW, new Map(), NOW, false, { weekly: 0, fiveHour: 0 })
+    expect(gaps.gaps[0]).toMatchObject({ start: NOW, end: NOW + 2 * HOUR_MS, endsWith: 'fiveHour' })
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() => root.render(<CapacityOutlook gaps={gaps} profiles={profiles} now={NOW} />))
+    const weekly = container.querySelector('figure') as HTMLElement
+    expect(
+      [...weekly.querySelectorAll('.cmd-band')].map((b) => b.getAttribute('data-tone')),
+    ).toEqual(['secondary'])
+    // The 5-hour chart shades it the same.
+    const five = container.querySelectorAll('figure')[1] as HTMLElement
+    expect([...five.querySelectorAll('.cmd-band')].map((b) => b.getAttribute('data-tone'))).toEqual(
+      ['secondary'],
+    )
+    const slider = weekly.querySelector('[role="slider"]') as HTMLElement
+    act(() => {
+      slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+    })
+    expect(slider.getAttribute('aria-valuetext')).toMatch(/; None available · 5-hour limits full$/)
+  })
+
+  it('keeps the first tone for a gap a week or a refusal ends', () => {
+    const profiles: ProfileStatus[] = [
+      {
+        profile: 'a',
+        band: 'ok',
+        weekly: { usedFraction: 1, resetsAt: NOW + 30 * HOUR_MS, lengthMs: 168 * HOUR_MS },
+        fiveHour: null,
+        rateLimitedUntil: null,
+        tokenExpiresAt: null,
+        latencyMs: { p50: null, p95: null, p99: null },
+      },
+    ]
+    const gaps = poolGaps(profiles, NOW, new Map(), NOW)
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() => root.render(<CapacityOutlook gaps={gaps} profiles={profiles} now={NOW} />))
+    const bands = [...(container.querySelector('figure')?.querySelectorAll('.cmd-band') ?? [])]
+    expect(bands.length).toBeGreaterThan(0)
+    expect(bands.every((b) => !b.hasAttribute('data-tone'))).toBe(true)
   })
 })
 
@@ -1071,6 +1182,23 @@ describe("a subscription's detail", () => {
     act(() => bravo?.click())
     expect(detail()).toContain('5-hour 96% used')
     expect(detail()).not.toContain('The week has')
+    // A window whose reset time is unknown is still capped by its week.
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[
+            sub('team-alpha', {
+              weekly: { usedFraction: 0.81, resetsAt: NOW + 76 * HOUR_MS, lengthMs: 168 * HOUR_MS },
+              fiveHour: { usedFraction: 0.13, resetsAt: null, lengthMs: 5 * HOUR_MS },
+            }),
+          ]}
+          now={NOW}
+        />,
+      ),
+    )
+    act(() => container.querySelector<HTMLButtonElement>('.cmd-account button')?.click())
+    expect(detail()).toContain('5-hour 13% used · reset time unknown')
+    expect(detail()).toContain('The week has 19% left, so the 5-hour window can use only that')
   })
 
   it('follows a mouse: opens as it passes over a subscription and closes when it leaves them', () => {
