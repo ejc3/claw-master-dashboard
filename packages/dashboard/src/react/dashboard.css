@@ -724,6 +724,15 @@
     overflow-wrap: anywhere;
   }
 
+  /* The account a subscription is logged in to: quiet, and free to break where it must. */
+  .cmd-row-email,
+  .cmd-account-email {
+    margin: 2px 0 0;
+    font-size: 0.8125rem;
+    color: var(--cmd-ink-3);
+    overflow-wrap: anywhere;
+  }
+
   .cmd-row-meta {
     display: flex;
     flex-wrap: wrap;

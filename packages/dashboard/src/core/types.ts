@@ -39,6 +39,11 @@ export interface ProfileStatus {
    * there; absent when the source cannot tell.
    */
   acceptedAt?: EpochMs | null
+  /**
+   * The email of the Anthropic account the profile is logged in to (claw_master.profile.info);
+   * null when not reported; absent when the source cannot tell.
+   */
+  email?: string | null
 }
 
 /** Everything the dashboard shows as "now". */

@@ -280,7 +280,7 @@ describe('createCloudWatchSource', () => {
     const { src, requests } = source(snapshotAnswers())
     const snapshot = await src.snapshot()
     const latest = t0 + 9 * 60_000
-    expect(requests).toHaveLength(12)
+    expect(requests).toHaveLength(13)
     const expressions = requests.map((r) => r.expression)
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
@@ -381,6 +381,30 @@ describe('createCloudWatchSource', () => {
     expect(fiveHourAt(alpha?.fiveHour ?? null, NOW)).toEqual(alpha?.fiveHour)
     // The old reading does not make the snapshot older.
     expect(snapshot.asOf).toBe(latest)
+  })
+
+  it('names the account each profile is logged in to, the latest when it changed', async () => {
+    const latest = t0 + 9 * 60_000
+    const answers = snapshotAnswers()
+    const { src, requests } = source((body, expression) => {
+      if (expression.includes('profile.info'))
+        return {
+          MetricDataResults: [
+            result('alpha old@example.com', [[latest - 5 * 60_000, 1]]),
+            result('alpha new@example.com', [[latest, 1]]),
+          ],
+          Messages: [],
+        }
+      return answers(body, expression)
+    })
+    const snapshot = await src.snapshot()
+    expect(requests.map((r) => r.expression)).toContain(
+      'SELECT MAX("claw_master.profile.info") FROM "ClawMaster" GROUP BY profile, email',
+    )
+    const email = (name: string) => snapshot.profiles.find((p) => p.profile === name)?.email
+    expect(email('alpha')).toBe('new@example.com')
+    // None reported: null, not a guess.
+    expect(email('bravo')).toBeNull()
   })
 
   it("takes the usage poll's 5-hour reading over the response headers' when there is one", async () => {
