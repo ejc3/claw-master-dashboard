@@ -175,7 +175,7 @@ export function ForecastHistory(props: {
     ]
   }, [past, ahead, times])
 
-  // Each title: last week's total and the next week's.
+  // Each title: last week's total and this week's (the next seven days).
   const totalAt = (s: ChartSeries, t: EpochMs) =>
     s.points.filter(([time]) => time <= t).at(-1)?.[1] ?? 0
   const bands = useMemo(
@@ -219,7 +219,7 @@ export function ForecastHistory(props: {
           const sofar = totalAt(s, clock)
           const lastWeek = past === null ? '' : ` · ${format(sofar)} last week`
           const nextWeek =
-            ahead === null ? '' : ` · ${format((s.points.at(-1)?.[1] ?? 0) - sofar)} next week`
+            ahead === null ? '' : ` · ${format((s.points.at(-1)?.[1] ?? 0) - sofar)} this week`
           return (
             <LineChart
               key={s.key}
@@ -248,10 +248,10 @@ export function ForecastHistory(props: {
         </ul>
       )}
       <p className="cmd-capacity-note">
-        Running totals from a week ago: measured before now, forecast after · wasted: what each
-        weekly reset threw away, 100% being one subscription's week · without tokens: hours no
-        subscription could take work · ahead: the last 24 hours' use, or last week's, replayed hour
-        by hour
+        Running totals from a week ago: measured before now, forecast after (this week: the next
+        seven days) · wasted: what each weekly reset threw away, 100% being one subscription's week
+        · without tokens: hours no subscription could take work · ahead: the last 24 hours' use, or
+        last week's, replayed hour by hour
       </p>
     </section>
   )

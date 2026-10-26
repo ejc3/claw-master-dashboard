@@ -165,13 +165,13 @@ describe('ForecastHistory', () => {
     ).toEqual(['Now', 'Now'])
     const captions = [...page.container.querySelectorAll('figcaption')].map((f) => f.textContent)
     // a's reset in 10 hours throws away 40%; at 1% an hour its new week then runs out.
-    expect(captions[0]).toMatch(/^Wasted at resets · \d+% last week · 40% next week$/)
+    expect(captions[0]).toMatch(/^Wasted at resets · \d+% last week · 40% this week$/)
     const hours = gaps.gaps.reduce(
       (sum, g) => sum + (Math.min(g.end ?? T0 + WEEK_MS, T0 + WEEK_MS) - g.start) / HOUR_MS,
       0,
     )
     expect(hours).toBeGreaterThan(10)
-    expect(captions[1]).toMatch(new RegExp(`· ${Math.round(hours)}h next week$`))
+    expect(captions[1]).toMatch(new RegExp(`· ${Math.round(hours)}h this week$`))
     // Shaded on the time-without-tokens chart only.
     const [wastedChart, blockedChart] = [...page.container.querySelectorAll('figure')]
     expect(wastedChart?.querySelectorAll('.cmd-band')).toHaveLength(0)
@@ -210,7 +210,7 @@ describe('ForecastHistory', () => {
     page.render(T0)
     await page.settle()
     expect(page.container.querySelector('figcaption')?.textContent).toBe(
-      'Wasted at resets · 40% next week',
+      'Wasted at resets · 40% this week',
     )
     expect(page.tables().at(-1)).toHaveLength(2 * 168 + 3)
   })
@@ -235,13 +235,13 @@ describe('ForecastHistory', () => {
     await page.settle()
     page.letGo()
     await page.settle()
-    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 70% next week/)
+    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 70% this week/)
     expect(page.container.textContent).toContain('Most wasted: a 70%')
     const tab = [...page.container.querySelectorAll('button')].find(
       (b) => b.textContent === 'Like last week',
     )
     act(() => tab?.click())
-    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 90% next week/)
+    expect(title()).toMatch(/^Wasted at resets · \d+% last week · 90% this week/)
     expect(page.container.textContent).toContain('Most wasted: a 90%')
   })
 
@@ -278,7 +278,7 @@ describe('ForecastHistory', () => {
     page.render(T0)
     await page.settle()
     const captions = [...page.container.querySelectorAll('figcaption')].map((f) => f.textContent)
-    expect(captions[0]).toMatch(/· 50% next week$/)
-    expect(captions[1]).toMatch(/· 168h next week$/)
+    expect(captions[0]).toMatch(/· 50% this week$/)
+    expect(captions[1]).toMatch(/· 168h this week$/)
   })
 })
