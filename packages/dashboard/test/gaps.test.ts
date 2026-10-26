@@ -475,8 +475,11 @@ describe('poolGaps capacity trace', () => {
       fiveHour: 1,
       weeklyBy: [0.5, 0.5],
       fiveHourBy: [0.5, 0.5],
+      weeklyResetsBy: [NOW + 24 * H, NOW + 100 * H],
     })
     expect(g.subscriptions).toEqual(['a', 'b'])
+    // Once a's week has reset, its next reset is a week on.
+    expect(at(24)?.weeklyResetsBy).toEqual([NOW + 24 * H + WEEK_MS, NOW + 100 * H])
     // 2% of one subscription's week an hour: 0.98 left after an hour.
     expect(at(1)?.weekly).toBeCloseTo(0.98, 6)
     // a's week resets at 24h: what is left jumps by a's used share.

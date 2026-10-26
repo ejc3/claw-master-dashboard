@@ -43,6 +43,8 @@ interface Props {
   stacked?: boolean
   /** A moment marked across the plot with a labelled line, e.g. where measured turns to forecast. */
   marker?: { at: EpochMs; label: string }
+  /** A word on a series at the sample read, after its name in the readout (e.g. when it resets). */
+  note?: (key: string, index: number) => string | null
 }
 
 const PAD = { top: 8, right: 8, bottom: 22, left: 44 }
@@ -140,6 +142,7 @@ export const LineChart = memo(function LineChart({
   stacked = false,
   max: fixedMax,
   marker,
+  note,
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>()
   // Series turned off from the legend; at least one always stays on.
@@ -525,6 +528,10 @@ export const LineChart = memo(function LineChart({
                   <div className="cmd-tooltip-row" key={s.key}>
                     <span className="cmd-swatch" style={{ color: s.color }} />
                     {s.label}
+                    {(() => {
+                      const said = note?.(s.key, active ?? 0) ?? null
+                      return said === null ? null : <span className="cmd-tooltip-note">{said}</span>
+                    })()}
                     <b>{format(s.points[active ?? 0]?.[1] ?? 0)}</b>
                   </div>
                 ))}

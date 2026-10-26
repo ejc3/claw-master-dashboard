@@ -10,6 +10,7 @@ import {
   fiveHourLeft,
   formatCountdown,
   formatPercent,
+  formatWhen,
   gapsHeadline,
   HOUR_MS,
   hasHeadroom,
@@ -396,13 +397,15 @@ function capacitySeries(gaps: PoolGaps | null, now: EpochMs, resets: EpochMs[]) 
       .filter((p) => shown(p.at, until, every))
       .map((p): [EpochMs, number] => [p.at, p[key]])
   // Each subscription's share, for the stacked charts.
-  const by = (key: 'weeklyBy' | 'fiveHourBy', until: EpochMs, every: number) =>
-    gaps.subscriptions.map((name, k) => ({
+  // With when each week resets next at each point, for the weekly chart's readout.
+  const by = (key: 'weeklyBy' | 'fiveHourBy', until: EpochMs, every: number) => {
+    const samples = gaps.trace.filter((p) => shown(p.at, until, every))
+    return gaps.subscriptions.map((name, k) => ({
       name,
-      points: gaps.trace
-        .filter((p) => shown(p.at, until, every))
-        .map((p): [EpochMs, number] => [p.at, p[key][k] ?? 0]),
+      points: samples.map((p): [EpochMs, number] => [p.at, p[key][k] ?? 0]),
+      weekResets: samples.map((p) => p.weeklyResetsBy[k] ?? null),
     }))
+  }
   return {
     weekly: points('weekly', weeklyUntil, HOUR_MS),
     weeklyBy: by('weeklyBy', weeklyUntil, HOUR_MS),
@@ -459,12 +462,20 @@ export function CapacityOutlook(props: {
   const colors = accountColors(names.length > 0 ? names : shown.subscriptionsShown)
   const chart = (key: 'weekly' | 'fiveHour', title: string, height: number) => {
     const total = shown[key]
+    const bySubscription = shown[key === 'weekly' ? 'weeklyBy' : 'fiveHourBy']
+    // On the weekly chart, the readout says when each subscription's week resets next after
+    // the time read.
+    const weekResets = new Map(bySubscription.map((s) => [s.name, s.weekResets]))
+    const weekBack = (name: string, index: number) => {
+      const at = weekResets.get(name)?.[index] ?? null
+      return at === null ? null : `– ${formatWhen(at, props.now)}`
+    }
     const current = total.filter(([t]) => t <= props.now).at(-1)?.[1] ?? total[0]?.[1]
     return total.length < 2 ? null : (
       <LineChart
         // In one subscription's limit, said outright: the pool's 66% would read as two thirds of all.
         title={`${title}${current === undefined ? '' : ` · ${asPercent(current)} of one subscription`}`}
-        series={shown[key === 'weekly' ? 'weeklyBy' : 'fiveHourBy'].map((s) => ({
+        series={bySubscription.map((s) => ({
           key: s.name,
           label: short.get(s.name) ?? s.name,
           color: colors.get(s.name) ?? 'var(--cmd-ink-3)',
@@ -478,6 +489,7 @@ export function CapacityOutlook(props: {
         height={height}
         now={now}
         stacked
+        {...(key === 'weekly' ? { note: weekBack } : {})}
       />
     )
   }

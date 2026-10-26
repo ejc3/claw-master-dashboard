@@ -477,6 +477,8 @@ export interface CapacityPoint {
   weeklyBy: number[]
   /** What each subscription's 5-hour window can still take, in the same order (see fiveHour). */
   fiveHourBy: number[]
+  /** When each subscription's week resets next, in the same order; null when unknown. */
+  weeklyResetsBy: Array<EpochMs | null>
 }
 
 /** How often the capacity trace is sampled. */
@@ -647,6 +649,7 @@ export function poolGaps(
     let fiveHour = 0
     const weeklyBy: number[] = []
     const fiveHourBy: number[] = []
+    const weeklyResetsBy: Array<EpochMs | null> = []
     for (const s of slots) {
       resetWeek(s, at)
       closeIfOver(s.five, at)
@@ -659,8 +662,9 @@ export function poolGaps(
       const five = isFull(s.weekly) || refused ? 0 : Math.min(1 - s.five.used, 1 - s.weekly.used)
       fiveHour += five
       fiveHourBy.push(five)
+      weeklyResetsBy.push(s.weekly.resetsAt)
     }
-    trace.push({ at, weekly, fiveHour, weeklyBy, fiveHourBy })
+    trace.push({ at, weekly, fiveHour, weeklyBy, fiveHourBy, weeklyResetsBy })
   }
   const sampleUntil = (until: EpochMs) => {
     for (; nextSample < until; nextSample += TRACE_STEP_MS) {

@@ -832,6 +832,9 @@ describe('the capacity charts', () => {
     expect(readout(five, 'Home').getAttribute('aria-valuetext')).toMatch(
       /: a 50%, b 50%, total 100%$/,
     )
+    // Reset times are the weekly chart's: the 5-hour readout has none.
+    expect(five.querySelector('.cmd-tooltip-row')).not.toBeNull()
+    expect(five.querySelector('.cmd-tooltip-note')).toBeNull()
   })
 })
 
@@ -861,6 +864,13 @@ describe('a gap in the capacity charts', () => {
       slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })
     expect(slider.getAttribute('aria-valuetext')).toContain('None available')
+    // Each subscription's row says when its week resets next.
+    const rows = () =>
+      [...weekly.querySelectorAll('.cmd-tooltip-row')].map((r) => r.textContent ?? '')
+    expect(rows()).toEqual([
+      `a– ${formatWhen(NOW + 30 * HOUR_MS, NOW)}0%`,
+      `b– ${formatWhen(NOW + 60 * HOUR_MS, NOW)}0%`,
+    ])
     // And at the last point, after the gap, it does not.
     act(() => {
       slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
