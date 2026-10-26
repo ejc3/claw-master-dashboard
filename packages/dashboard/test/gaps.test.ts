@@ -53,7 +53,7 @@ const hours = (g: PoolGaps) =>
   }))
 /** The status line and its facts, as one string: "headline | fact | fact". */
 /** The first gap's part of the headline: the day's total after it has tests of its own. */
-const firstGap = (text: string) => text.replace(/ and [^|]+ of the next 24 hours/, '')
+const firstGap = (text: string) => text.replace(/ · out [^|]+ of the next 24 hours/, '')
 const headline = (g: PoolGaps) => {
   const h = gapsHeadline(g, NOW)
   return firstGap([h.headline, ...h.facts].join(' | '))
@@ -641,17 +641,17 @@ describe('gapsHeadline: more than one gap in a day', () => {
     // 2h, then 7h to 30h: 17h of it in the next day.
     const next = { start: NOW + 7 * H, end: NOW + 30 * H, endsWith: 'weekly' as const }
     expect(gapsHeadline(g([first, next]), NOW).headline).toBe(
-      'Runs out in 3h for 2h and 19h of the next 24 hours',
+      'Runs out in 3h for 2h · out 19h of the next 24 hours',
     )
     expect(gapsHeadline(g([{ ...first, start: NOW }, next]), NOW).headline).toBe(
-      'Out now · back in 5h and 22h of the next 24 hours',
+      'Out now · back in 5h · out 22h of the next 24 hours',
     )
   })
 
   it('counts a gap with no known end to the end of the day', () => {
     const open = { start: NOW + 13 * H, end: null, endsWith: null }
     expect(gapsHeadline(g([first, open]), NOW).headline).toBe(
-      'Runs out in 3h for 2h and 13h of the next 24 hours',
+      'Runs out in 3h for 2h · out 13h of the next 24 hours',
     )
   })
 

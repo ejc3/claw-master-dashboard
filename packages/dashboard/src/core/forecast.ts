@@ -890,11 +890,11 @@ export function forecastHeadline(
  * what stops each, and how long until the first of them can take work again, which needs room
  * in both its limits. "Runs out in 9h 57m for 1d 19h", then the clock times when the viewer's
  * zone is known ("22:43 until Mon 17:59"). With more than one gap in the next 24 hours, how
- * long of those the pool is out in all ("… for 1h 31m and 15h 13m of the next 24 hours"): the
+ * long of those the pool is out in all ("… for 1h 31m · out 15h 13m of the next 24 hours"): the
  * first gap's end is not the end of the trouble. Partial when some subscriptions have no weekly
  * reading, so they may still have room.
  */
-/** " and 15h 13m of the next 24 hours" when more than one gap falls in them; else nothing. */
+/** " · out 15h 13m of the next 24 hours" when more than one gap falls in them; else nothing. */
 function outOfDay(gaps: PoolGap[], now: EpochMs): string {
   const until = now + 24 * HOUR_MS
   // A gap with no known end lasts the rest of the day.
@@ -904,7 +904,7 @@ function outOfDay(gaps: PoolGap[], now: EpochMs): string {
     (sum, g) => sum + Math.min(g.end ?? until, until) - Math.max(g.start, now),
     0,
   )
-  return ` and ${formatCountdown(out)} of the next 24 hours`
+  return ` · out ${formatCountdown(out)} of the next 24 hours`
 }
 
 export function gapsHeadline(
