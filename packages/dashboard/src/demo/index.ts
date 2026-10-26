@@ -365,6 +365,7 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
           p95: 31000 * p.latencyScale,
           p99: 52000 * p.latencyScale,
         },
+        email: `${p.name.replace(/^.*-/, '')}@example.com`,
       }))
       return { asOf, profiles, sessions: 23, activeConnections: 41 }
     },

@@ -425,6 +425,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         sessions,
         connections,
         verdicts,
+        info,
       ] = await Promise.all([
         read(gauge('MAX', 'quota.used_fraction', ['profile'])),
         read(gauge('MAX', 'quota.resets_in_seconds', ['profile'])),
@@ -456,6 +457,8 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
             groupBy: ['profile', 'value'],
           }),
         ),
+        // Which account each profile is logged in to (exported by claw-master releases that have it).
+        read(gauge('MAX', 'profile.info', ['profile', 'email'])),
       ])
       const byLabel = (results: InsightsResult[]) => new Map(results.map((r) => [r.label, r]))
       const resetsBy = byLabel(resets)
@@ -481,6 +484,17 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         const minute = result.points.filter(([, count]) => count > 0).at(-1)?.[0]
         if (minute !== undefined && minute > (acceptedBy.get(profile) ?? -1))
           acceptedBy.set(profile, minute)
+      }
+      // Each profile's account: the email read most lately, should it have logged in to another.
+      // Not through at() either: it says nothing of how new the readings are.
+      const emailBy = new Map<string, { at: EpochMs; email: string }>()
+      for (const result of info) {
+        const [profile, email] = splitLabel(result.label)
+        const reading = latest(result)
+        if (reading === null || email === '') continue
+        const known = emailBy.get(profile)
+        if (known === undefined || reading[0] > known.at)
+          emailBy.set(profile, { at: reading[0], email })
       }
       // Not through at(): an hours-old 5-hour reading does not make the snapshot newer or older.
       const fiveHourBy = new Map<string, Partial<Record<string, [EpochMs, number]>>>()
@@ -538,6 +552,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
             tokenExpiresAt: token === null ? null : token[0] + token[1] * 1000,
             latencyMs,
             acceptedAt: acceptedBy.get(profile) ?? null,
+            email: emailBy.get(profile)?.email ?? null,
           }
         })
         .sort((a, b) => a.profile.localeCompare(b.profile))

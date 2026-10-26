@@ -320,6 +320,7 @@ export function PoolAccounts(props: {
           <p>
             <b>{shown.profile}</b> · {availability(shown, props.now)}
           </p>
+          {shown.email != null && <p className="cmd-account-email">{shown.email}</p>}
           <ul>
             <WindowDetail name="Weekly" who={shown.profile} window={shown.weekly} now={props.now} />
             {(() => {

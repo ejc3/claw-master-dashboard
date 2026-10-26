@@ -1153,6 +1153,31 @@ describe("a subscription's detail", () => {
     expect(container.querySelector('.cmd-account-detail')).toBeNull()
   })
 
+  it('names the account each subscription is logged in to, in its detail and on its card', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    const alpha = sub('team-alpha', { email: 'alpha@example.com' })
+    act(() =>
+      root.render(
+        <>
+          <PoolAccounts profiles={[alpha, sub('team-bravo', { email: null })]} now={NOW} />
+          <RunwayCard status={alpha} now={NOW} />
+        </>,
+      ),
+    )
+    expect(container.querySelector('.cmd-row-email')?.textContent).toBe('alpha@example.com')
+    const [first, second] = [
+      ...container.querySelectorAll<HTMLButtonElement>('.cmd-account button'),
+    ]
+    act(() => first?.click())
+    expect(container.querySelector('.cmd-account-email')?.textContent).toBe('alpha@example.com')
+    // None reported: no line.
+    act(() => second?.click())
+    expect(container.querySelector('.cmd-account-email')).toBeNull()
+  })
+
   it("says when the week leaves less than the 5-hour window's own reading", () => {
     const container = document.createElement('div')
     document.body.append(container)

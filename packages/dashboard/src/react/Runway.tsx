@@ -162,6 +162,7 @@ export function RunwayCard({
           </h3>
           <StatusBadge status={card} />
         </div>
+        {status.email != null && <p className="cmd-row-email">{status.email}</p>}
         <p className="cmd-row-meta">
           {b?.until != null && (
             <span data-warn="true">Back in {formatCountdown(b.until - now)}</span>
