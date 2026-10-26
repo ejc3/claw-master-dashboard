@@ -939,6 +939,12 @@
     opacity: 0.14;
   }
 
+  /* Out only until a 5-hour window resets: the weeks still have room. */
+  .cmd-band[data-tone="secondary"] {
+    fill: var(--cmd-reserve-mark);
+    opacity: 0.22;
+  }
+
   /* A moment marked across a chart: a dashed rule and its label. */
   .cmd-marker line {
     stroke: var(--cmd-ink-3);
@@ -1011,6 +1017,11 @@
     margin-left: auto;
     padding-left: 16px;
     font-weight: 600;
+  }
+
+  .cmd-tooltip-note {
+    color: var(--cmd-ink-3);
+    font-size: 0.75rem;
   }
 
   .cmd-tooltip-time {
@@ -1357,6 +1368,10 @@
 
     .cmd-band {
       fill: Highlight;
+    }
+
+    .cmd-band[data-tone="secondary"] {
+      fill: GrayText;
     }
   }
   /* A subscription that just took work again: stars burst around its bars, which glow once. */

@@ -147,7 +147,7 @@ describe('the reset scenario', () => {
     const fiveHourTitle = [...container.querySelectorAll('figcaption')]
       .map((e) => e.textContent ?? '')
       .find((t) => t.startsWith('5-hour limit left'))
-    expect(fiveHourTitle).toBe('5-hour limit left, next 5h · 40%')
+    expect(fiveHourTitle).toBe('5-hour limit left, next 5h · 40% of one subscription')
   })
 })
 

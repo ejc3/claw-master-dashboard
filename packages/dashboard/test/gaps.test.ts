@@ -52,9 +52,11 @@ const hours = (g: PoolGaps) =>
     endsWith: gap.endsWith,
   }))
 /** The status line and its facts, as one string: "headline | fact | fact". */
+/** The first gap's part of the headline: the day's total after it has tests of its own. */
+const firstGap = (text: string) => text.replace(/ and [^|]+ of the next 24 hours/, '')
 const headline = (g: PoolGaps) => {
   const h = gapsHeadline(g, NOW)
-  return [h.headline, ...h.facts].join(' | ')
+  return firstGap([h.headline, ...h.facts].join(' | '))
 }
 
 describe('poolGaps: both windows in one simulation', () => {
@@ -390,7 +392,7 @@ describe('when the pool runs out and for how long: the matrix', () => {
         else expect(first.end).toBe(NOW + row.gap.end * H)
         expect(first.endsWith).toBe(row.gap.endsWith)
       }
-      expect(gapsHeadline(g, NOW).headline).toBe(row.headline)
+      expect(firstGap(gapsHeadline(g, NOW).headline)).toBe(row.headline)
     })
   }
 })
@@ -475,8 +477,11 @@ describe('poolGaps capacity trace', () => {
       fiveHour: 1,
       weeklyBy: [0.5, 0.5],
       fiveHourBy: [0.5, 0.5],
+      weeklyResetsBy: [NOW + 24 * H, NOW + 100 * H],
     })
     expect(g.subscriptions).toEqual(['a', 'b'])
+    // Once a's week has reset, its next reset is a week on.
+    expect(at(24)?.weeklyResetsBy).toEqual([NOW + 24 * H + WEEK_MS, NOW + 100 * H])
     // 2% of one subscription's week an hour: 0.98 left after an hour.
     expect(at(1)?.weekly).toBeCloseTo(0.98, 6)
     // a's week resets at 24h: what is left jumps by a's used share.
@@ -614,6 +619,45 @@ describe('gapsHeadline', () => {
       headline: 'Out now · back in 1d 6h',
       facts: ['Back T+30h'],
     })
+  })
+})
+
+describe('gapsHeadline: more than one gap in a day', () => {
+  const g = (gaps: PoolGaps['gaps']): PoolGaps => ({
+    counted: 2,
+    unreported: 0,
+    gaps,
+    lasts: null,
+    trace: [],
+    clock: NOW,
+    capacity: 2,
+    subscriptions: [],
+    pace: { weekly: 0, fiveHour: 0 },
+    unusedAtReset: [],
+  })
+  const first = { start: NOW + 3 * H, end: NOW + 5 * H, endsWith: 'fiveHour' as const }
+
+  it('adds how long the pool is out of the next 24 hours, counting only those hours', () => {
+    // 2h, then 7h to 30h: 17h of it in the next day.
+    const next = { start: NOW + 7 * H, end: NOW + 30 * H, endsWith: 'weekly' as const }
+    expect(gapsHeadline(g([first, next]), NOW).headline).toBe(
+      'Runs out in 3h for 2h and 19h of the next 24 hours',
+    )
+    expect(gapsHeadline(g([{ ...first, start: NOW }, next]), NOW).headline).toBe(
+      'Out now · back in 5h and 22h of the next 24 hours',
+    )
+  })
+
+  it('counts a gap with no known end to the end of the day', () => {
+    const open = { start: NOW + 13 * H, end: null, endsWith: null }
+    expect(gapsHeadline(g([first, open]), NOW).headline).toBe(
+      'Runs out in 3h for 2h and 13h of the next 24 hours',
+    )
+  })
+
+  it('leaves it out with one gap in the next 24 hours', () => {
+    const later = { start: NOW + 25 * H, end: NOW + 30 * H, endsWith: 'weekly' as const }
+    expect(gapsHeadline(g([first, later]), NOW).headline).toBe('Runs out in 3h for 2h')
   })
 })
 

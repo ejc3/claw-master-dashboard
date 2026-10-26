@@ -228,7 +228,9 @@ export function ForecastHistory(props: {
               format={format}
               height={140}
               now={now}
-              bands={bands}
+              // The time without tokens is shaded on its own chart only: on the waste chart it
+              // would read as waste.
+              bands={s.key === 'blocked' ? bands : []}
               bandLabel="Without tokens"
               area
               marker={{ at: clock, label: 'Now' }}
