@@ -340,6 +340,19 @@ export function PoolAccounts(props: {
                 now={props.now}
               />
             )}
+            {(() => {
+              // A 5-hour window can use no more than the week has left: say so where the bar and
+              // the charts show less than the window's own reading.
+              const five = fiveHourAt(shown.fiveHour, props.now)
+              const fiveUsed = share(five?.usedFraction)
+              const left = fiveHourLeft(shown, props.now)
+              if (weekUsedUp(shown, props.now) || blocked(shown, props.now) !== null) return null
+              if (five === null || five.resetsAt === null || five.resetsAt <= props.now) return null
+              if (fiveUsed === null || left === null || left >= 1 - fiveUsed - 0.005) return null
+              return (
+                <li>{`The week has ${formatPercent(left)} left, so the 5-hour window can use only that`}</li>
+              )
+            })()}
           </ul>
         </div>
       )}
@@ -449,7 +462,8 @@ export function CapacityOutlook(props: {
     const current = total.filter(([t]) => t <= props.now).at(-1)?.[1] ?? total[0]?.[1]
     return total.length < 2 ? null : (
       <LineChart
-        title={`${title}${current === undefined ? '' : ` · ${asPercent(current)}`}`}
+        // In one subscription's limit, said outright: the pool's 66% would read as two thirds of all.
+        title={`${title}${current === undefined ? '' : ` · ${asPercent(current)} of one subscription`}`}
         series={shown[key === 'weekly' ? 'weeklyBy' : 'fiveHourBy'].map((s) => ({
           key: s.name,
           label: short.get(s.name) ?? s.name,
@@ -492,7 +506,11 @@ export function CapacityOutlook(props: {
       {chart('fiveHour', '5-hour limit left, next 5h', 160)}
       <p className="cmd-capacity-note">
         {weeklyView === 'stopped' ? 'With no more use, as limits reset' : 'At the current pace'} ·
-        each subscription counts 100% · shaded: none can take work
+        100% is one subscription's whole limit
+        {shown.capacity > 1
+          ? `, so ${shown.capacity} subscriptions make ${asPercent(shown.capacity)}`
+          : ''}{' '}
+        · a 5-hour window can use no more than its week has left · shaded: none can take work
       </p>
     </div>
   )

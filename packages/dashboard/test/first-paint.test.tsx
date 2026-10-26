@@ -768,7 +768,9 @@ describe('the capacity charts', () => {
     roots.push(root)
     act(() => root.render(<CapacityOutlook gaps={gaps} profiles={profiles} now={ten} />))
     // a's half week plus b's whole one, at once.
-    expect(container.querySelector('figcaption')?.textContent).toBe('Weekly limit left · 150%')
+    expect(container.querySelector('figcaption')?.textContent).toBe(
+      'Weekly limit left · 150% of one subscription',
+    )
   })
 
   it('show what is left of each window, weekly to the furthest reset and 5-hour over a day', () => {
@@ -799,8 +801,8 @@ describe('the capacity charts', () => {
     const figures = [...container.querySelectorAll('figure')]
     // What is left now, in each title: each 5-hour window has 80% left, but its week only half.
     expect(figures.map((f) => f.querySelector('figcaption')?.textContent)).toEqual([
-      'Weekly limit left · 100%',
-      '5-hour limit left, next 5h · 100%',
+      'Weekly limit left · 100% of one subscription',
+      '5-hour limit left, next 5h · 100% of one subscription',
     ])
     // No table view on these charts; the readout reads each point.
     expect(
@@ -1028,6 +1030,37 @@ describe("a subscription's detail", () => {
       document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
     })
     expect(container.querySelector('.cmd-account-detail')).toBeNull()
+  })
+
+  it("says when the week leaves less than the 5-hour window's own reading", () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[
+            // 13% of the window used, but only 19% of the week left: the window can use 19%.
+            sub('team-alpha', {
+              weekly: { usedFraction: 0.81, resetsAt: NOW + 76 * HOUR_MS, lengthMs: 168 * HOUR_MS },
+              fiveHour: { usedFraction: 0.13, resetsAt: NOW + 3 * HOUR_MS, lengthMs: 5 * HOUR_MS },
+            }),
+            // 96% of the window used, 46% of the week left: the window's own reading stands.
+            sub('team-bravo'),
+          ]}
+          now={NOW}
+        />,
+      ),
+    )
+    const [alpha, bravo] = [...container.querySelectorAll<HTMLButtonElement>('.cmd-account button')]
+    act(() => alpha?.click())
+    const detail = () => container.querySelector('.cmd-account-detail')?.textContent ?? ''
+    expect(detail()).toContain('5-hour 13% used · resets')
+    expect(detail()).toContain('The week has 19% left, so the 5-hour window can use only that')
+    act(() => bravo?.click())
+    expect(detail()).toContain('5-hour 96% used')
+    expect(detail()).not.toContain('The week has')
   })
 
   it('follows a mouse: opens as it passes over a subscription and closes when it leaves them', () => {
