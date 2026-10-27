@@ -102,5 +102,48 @@ export function createPollStore(
   }
 }
 
+/** How many of the page's requests are in flight at once: each is a CloudWatch query or more. */
+export const MAX_REQUESTS_IN_FLIGHT = 4
+
+type FetchFn = (url: string, init: RequestInit) => Promise<Response>
+
+/**
+ * `fetchFn` with at most `max` requests in flight; the rest wait their turn in order, and one
+ * cancelled while it waits is dropped from the line. CloudWatch runs ten Metrics Insights queries
+ * a second for the whole account, and a page asks for dozens at once.
+ */
+export function limitRequests(fetchFn: FetchFn, max: number): FetchFn {
+  let running = 0
+  const waiting: Array<() => void> = []
+  return async (url, init) => {
+    if (running < max) running++
+    else {
+      await new Promise<void>((resolve, reject) => {
+        const signal = init.signal
+        const go = () => {
+          signal?.removeEventListener('abort', cancel)
+          resolve()
+        }
+        const cancel = () => {
+          const at = waiting.indexOf(go)
+          if (at >= 0) waiting.splice(at, 1)
+          reject(signal?.reason ?? new DOMException('The request was cancelled.', 'AbortError'))
+        }
+        if (signal?.aborted) return cancel()
+        signal?.addEventListener('abort', cancel, { once: true })
+        waiting.push(go)
+      })
+    }
+    // The slot passes straight to the next in line when this one ends.
+    try {
+      return await fetchFn(url, init)
+    } finally {
+      const next = waiting.shift()
+      if (next === undefined) running--
+      else next()
+    }
+  }
+}
+
 /** The page's shared store; null outside a dashboard, where each reader polls on its own. */
 export const PollStoreContext = createContext<PollStore | null>(null)

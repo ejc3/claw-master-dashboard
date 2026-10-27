@@ -56,7 +56,12 @@ import {
 import { type ChartSeries, foldSeries, LineChart, seriesColors } from './LineChart'
 import { accountColors, PoolOutlook } from './Pool'
 import type { PollFailure } from './poller'
-import { createPollStore, PollStoreContext } from './pollStore'
+import {
+  createPollStore,
+  limitRequests,
+  MAX_REQUESTS_IN_FLIGHT,
+  PollStoreContext,
+} from './pollStore'
 import {
   backupOutputQuery,
   chartQuery,
@@ -143,7 +148,9 @@ export function Dashboard(props: DashboardProps) {
     [firstSeries, timeZone],
   )
   // One poller per URL for the whole page, so a tab loaded in the background shows at once.
-  const [pollStore] = useState(createPollStore)
+  const [pollStore] = useState(() =>
+    createPollStore(limitRequests((url, init) => fetch(url, init), MAX_REQUESTS_IN_FLIGHT)),
+  )
   return (
     <FirstPaintContext.Provider value={firstPaint}>
       <PollStoreContext.Provider value={pollStore}>

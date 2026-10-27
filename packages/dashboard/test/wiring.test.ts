@@ -5,6 +5,12 @@ import { describe, expect, it } from 'vitest'
 const source = readFileSync(new URL('../src/react/Dashboard.tsx', import.meta.url), 'utf8')
 
 describe('Dashboard wiring', () => {
+  it("keeps the page's requests to a few in flight", () => {
+    expect(source).toMatch(
+      /createPollStore\(limitRequests\(\(url, init\) => fetch\(url, init\), MAX_REQUESTS_IN_FLIGHT\)\)/,
+    )
+  })
+
   it('keeps the last used-share readings while the next range loads', () => {
     expect(source).toMatch(/const usedData = useLastReady\(usedReadings\)/)
     expect(source).toMatch(/failureOf\(usedReadings\)/)

@@ -87,6 +87,7 @@ export {
   runningBlocked,
   runningWaste,
 } from './history'
+export { inTurn } from './limit'
 export {
   EVEN_MARGIN,
   elapsedFraction,
