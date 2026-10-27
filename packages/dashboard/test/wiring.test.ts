@@ -72,7 +72,8 @@ const queries = readFileSync(new URL('../src/react/queries.ts', import.meta.url)
 
 describe('Token wiring', () => {
   it('charts tokens by subscription, and requests only when the range has no token counts', () => {
-    expect(source).toMatch(/metric: 'tokens', groupBy: 'profile', \.\.\.tokenType/)
+    expect(source).toMatch(/useCountedSeries\(apiBase, tokensByProfileQuery\(now, rangeName\)\)/)
+    expect(source).toMatch(/tokensOfType\(tokensByProfileTypes, tokenChoice\)/)
     expect(source).toMatch(
       /const showTokens = tokenRangeCoverage !== null && tokenRangeCoverage !== 'none'/,
     )

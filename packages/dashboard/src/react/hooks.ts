@@ -251,7 +251,9 @@ export function usePrefetch(urls: readonly string[], everyMs: number, enabled: b
       }
       hold(url, true, answered)
     }
-    next()
+    // After this render's other effects (React runs them together), so a URL the page itself
+    // polls is seen as polled rather than waited on: a seeded one would not answer for a period.
+    queueMicrotask(next)
     return () => {
       stopped = true
       for (const timer of timers) clearTimeout(timer)

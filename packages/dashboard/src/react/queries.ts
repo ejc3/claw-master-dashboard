@@ -7,9 +7,6 @@ import {
   type SeriesQuery,
   seriesQueryToParams,
   type TimeRange,
-  TOKEN_CHOICES,
-  TOKEN_TYPES,
-  type TokenType,
   WEEK_PER_WINDOW_SPAN_MS,
   WEEKLY_SMOOTHING_MS,
 } from '../core'
@@ -143,21 +140,22 @@ export function kpiTokensQuery(now: EpochMs): SeriesQuery {
   return { metric: 'tokens', groupBy: 'type', range: kpiRange(now), stepSeconds: KPI_STEP_SECONDS }
 }
 
-/** The table's queries for one split: requests, and one per token type when the split counts them. */
+/** The table's queries for one split: requests, and tokens by type when the split counts them. */
 export function breakdownQueries(
   range: TimeRange,
   stepSeconds: number,
   split: (typeof SPLITS)[number],
-): { requests: SeriesQuery | null; tokens: Record<TokenType, SeriesQuery> | null } {
+): { requests: SeriesQuery | null; tokens: SeriesQuery | null } {
   const base = { range, stepSeconds, groupBy: split.dimension }
   return {
     requests: split.requests ? { ...base, metric: 'requests' } : null,
-    tokens: split.tokens
-      ? (Object.fromEntries(
-          TOKEN_TYPES.map((tokenType) => [tokenType, { ...base, metric: 'tokens', tokenType }]),
-        ) as Record<TokenType, SeriesQuery>)
-      : null,
+    tokens: split.tokens ? { ...base, metric: 'tokens', byType: true } : null,
   }
+}
+
+/** Tokens by subscription and type over a range: every token choice of the subscription chart. */
+export function tokensByProfileQuery(now: EpochMs, rangeName: RangeName): SeriesQuery {
+  return chartQuery(now, rangeName, { metric: 'tokens', groupBy: 'profile', byType: true })
 }
 
 /**
@@ -201,14 +199,31 @@ export function historyQuery(
   }
 }
 
-/** Output tokens by subscription over the last day: the paid API's (api-backup) is what it cost. */
+/**
+ * Tokens by subscription and type over the last day, for the paid API's output tokens (api-backup):
+ * what it cost. The subscription chart's own query at 24 hours, so one answer serves both.
+ */
 export function backupOutputQuery(now: EpochMs): SeriesQuery {
-  return chartQuery(now, '24h', { metric: 'tokens', groupBy: 'profile', tokenType: 'output' })
+  return tokensByProfileQuery(now, '24h')
 }
 
-/** Tokens by project over the last day: which projects were active. */
+/**
+ * Tokens by project and type over the last day: which projects were active. The project table's
+ * own query at 24 hours, so one answer serves both.
+ */
 export function projectsQuery(now: EpochMs): SeriesQuery {
-  return chartQuery(now, '24h', { metric: 'tokens', groupBy: 'project' })
+  return chartQuery(now, '24h', { metric: 'tokens', groupBy: 'project', byType: true })
+}
+
+/** The queries once each, in order: two that ask the same thing are one request. */
+function distinct(queries: SeriesQuery[]): SeriesQuery[] {
+  const seen = new Set<string>()
+  return queries.filter((q) => {
+    const key = queryKey(q)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 /** Every query the page makes when it opens at `now`: the range and split it opens with. */
@@ -219,10 +234,9 @@ export function firstQueries(now: EpochMs): SeriesQuery[] {
     split === undefined
       ? null
       : breakdownQueries(rangeEnding(now, chart.ms, chart.stepSeconds), chart.stepSeconds, split)
-  return [
+  return distinct([
     chartQuery(now, FIRST_RANGE, { metric: 'requests', groupBy: 'profile' }),
-    // The token choice starts at all types: no tokenType.
-    chartQuery(now, FIRST_RANGE, { metric: 'tokens', groupBy: 'profile' }),
+    tokensByProfileQuery(now, FIRST_RANGE),
     chartQuery(now, FIRST_RANGE, { metric: 'errors' }),
     chartQuery(now, FIRST_RANGE, { metric: 'weeklyUsed', groupBy: 'profile' }),
     chartQuery(now, FIRST_RANGE, { metric: 'backupRequests' }),
@@ -237,41 +251,37 @@ export function firstQueries(now: EpochMs): SeriesQuery[] {
       ? []
       : [
           ...(table.requests === null ? [] : [table.requests]),
-          ...Object.values(table.tokens ?? {}),
+          ...(table.tokens === null ? [] : [table.tokens]),
         ]),
-  ]
+  ])
 }
 
 /**
- * Every query behind the page's tabs at `now`: each range (the one shown first), each token
- * choice of the subscription chart, and each split of the breakdown table. Loaded in this order
+ * Every query behind the page's tabs at `now`: each range (the one shown first) and each split of
+ * the breakdown table (every token choice is in one answer). Loaded in this order
  * in the background, so switching to any of them shows its answer at once.
  */
 export function tabQueries(now: EpochMs, shown: RangeName): SeriesQuery[] {
   const names = [shown, ...(Object.keys(RANGES) as RangeName[]).filter((name) => name !== shown)]
-  return names.flatMap((rangeName) => {
-    const chart = RANGES[rangeName]
-    const range = rangeEnding(now, chart.ms, chart.stepSeconds)
-    return [
-      chartQuery(now, rangeName, { metric: 'requests', groupBy: 'profile' }),
-      ...TOKEN_CHOICES.map((choice) =>
-        chartQuery(now, rangeName, {
-          metric: 'tokens',
-          groupBy: 'profile',
-          ...(choice === 'all' ? {} : { tokenType: choice }),
+  return distinct(
+    names.flatMap((rangeName) => {
+      const chart = RANGES[rangeName]
+      const range = rangeEnding(now, chart.ms, chart.stepSeconds)
+      return [
+        chartQuery(now, rangeName, { metric: 'requests', groupBy: 'profile' }),
+        tokensByProfileQuery(now, rangeName),
+        chartQuery(now, rangeName, { metric: 'errors' }),
+        chartQuery(now, rangeName, { metric: 'weeklyUsed', groupBy: 'profile' }),
+        ...SPLITS.flatMap((split) => {
+          const table = breakdownQueries(range, chart.stepSeconds, split)
+          return [
+            ...(table.requests === null ? [] : [table.requests]),
+            ...(table.tokens === null ? [] : [table.tokens]),
+          ]
         }),
-      ),
-      chartQuery(now, rangeName, { metric: 'errors' }),
-      chartQuery(now, rangeName, { metric: 'weeklyUsed', groupBy: 'profile' }),
-      ...SPLITS.flatMap((split) => {
-        const table = breakdownQueries(range, chart.stepSeconds, split)
-        return [
-          ...(table.requests === null ? [] : [table.requests]),
-          ...Object.values(table.tokens ?? {}),
-        ]
-      }),
-    ]
-  })
+      ]
+    }),
+  )
 }
 
 /** A query's identity: the parameters of its request, which the browser polls under. */
@@ -288,6 +298,7 @@ export function queryShape(query: SeriesQuery): string {
     query.metric,
     query.groupBy ?? '',
     query.tokenType ?? '',
+    query.byType === true ? 'byType' : '',
     query.stepSeconds,
     query.range.end - query.range.start,
   ].join('|')

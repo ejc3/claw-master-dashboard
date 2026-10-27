@@ -115,6 +115,12 @@ export interface SeriesQuery {
   stepSeconds: number
   /** Only this kind of token (tokens only); omitted, every kind is summed. */
   tokenType?: TokenType
+  /**
+   * Tokens only, with a split other than by type: one line per group and token type, keyed
+   * "<group> <type>", from one query rather than one per type (tokensOfType picks one type or
+   * sums them). CloudWatch runs only ten such queries a second for the whole account.
+   */
+  byType?: boolean
 }
 
 export interface Series {

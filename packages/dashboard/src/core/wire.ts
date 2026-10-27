@@ -38,6 +38,7 @@ export function seriesQueryToParams(query: SeriesQuery): URLSearchParams {
   })
   if (query.groupBy !== undefined) params.set('groupBy', query.groupBy)
   if (query.tokenType !== undefined) params.set('type', query.tokenType)
+  if (query.byType === true) params.set('byType', '1')
   return params
 }
 
@@ -74,6 +75,18 @@ export function seriesQueryFromParams(params: URLSearchParams): SeriesQuery {
     }
     if (query.groupBy === 'type') throw new BadQueryError('split by type or filter on it, not both')
     query.tokenType = tokenType as TokenType
+  }
+  const byType = params.get('byType')
+  if (byType !== null) {
+    if (byType !== '1') throw new BadQueryError('byType must be 1')
+    if (query.metric !== 'tokens') throw new BadQueryError('only tokens have a type')
+    if (query.groupBy === undefined || query.groupBy === 'type') {
+      throw new BadQueryError('byType goes with a split other than by type')
+    }
+    if (query.tokenType !== undefined) {
+      throw new BadQueryError('split by type or filter on it, not both')
+    }
+    query.byType = true
   }
   validateSeriesQuery(query)
   return query
