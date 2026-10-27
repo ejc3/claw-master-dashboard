@@ -53,6 +53,12 @@ interface Props {
    */
   note?: (key: string, index: number) => string | null
   noteLabel?: string
+  /**
+   * Order the readout by value, most first, and series that read the same by this time, soonest
+   * first (none last), e.g. each subscription's next reset. Without it the readout keeps the
+   * series' order.
+   */
+  rankBy?: (key: string, index: number) => EpochMs | null
 }
 
 const PAD = { top: 8, right: 8, bottom: 22, left: 44 }
@@ -152,6 +158,7 @@ export const LineChart = memo(function LineChart({
   marker,
   note,
   noteLabel = '',
+  rankBy,
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>()
   // Series turned off from the legend; at least one always stays on.
@@ -270,11 +277,15 @@ export const LineChart = memo(function LineChart({
   const readTime = times[readIndex]
   // Wall-clock text waits for hydration: the server does not know the viewer's time zone.
   const bandAt = (t: EpochMs) => bands.find((b) => t >= b.start && t < b.end)
+  // The series shown, in the readout's order at a sample.
+  const readout = (index: number) => {
+    const on = series.filter((s) => !off.has(s.key))
+    return rankBy === undefined ? on : rankReadout(on, index, format, rankBy)
+  }
   const valueText =
     readTime === undefined
       ? 'No data'
-      : `${when === null ? 'Latest' : when(readTime, now)}: ${series
-          .filter((s) => !off.has(s.key))
+      : `${when === null ? 'Latest' : when(readTime, now)}: ${readout(readIndex)
           .map((s) => {
             const said = note?.(s.key, readIndex) ?? null
             const value = `${s.label} ${format(s.points[readIndex]?.[1] ?? 0)}`
@@ -546,21 +557,19 @@ export const LineChart = memo(function LineChart({
                     : { left: tooltipLeft + 10 }
               }
             >
-              {series
-                .filter((s) => !off.has(s.key))
-                .map((s) => (
-                  <div className="cmd-tooltip-row" key={s.key}>
-                    <span className="cmd-swatch" style={{ color: s.color }} />
-                    {s.label}
-                    {(() => {
-                      const said = note?.(s.key, active ?? 0) ?? null
-                      return said === null ? null : (
-                        <span className="cmd-tooltip-note">{`– ${said}`}</span>
-                      )
-                    })()}
-                    <b>{format(s.points[active ?? 0]?.[1] ?? 0)}</b>
-                  </div>
-                ))}
+              {readout(active ?? 0).map((s) => (
+                <div className="cmd-tooltip-row" key={s.key}>
+                  <span className="cmd-swatch" style={{ color: s.color }} />
+                  {s.label}
+                  {(() => {
+                    const said = note?.(s.key, active ?? 0) ?? null
+                    return said === null ? null : (
+                      <span className="cmd-tooltip-note">{`– ${said}`}</span>
+                    )
+                  })()}
+                  <b>{format(s.points[active ?? 0]?.[1] ?? 0)}</b>
+                </div>
+              ))}
               <div className="cmd-tooltip-time">{formatWhen(activeTime, now)}</div>
             </div>
           )}
@@ -569,6 +578,27 @@ export const LineChart = memo(function LineChart({
     </figure>
   )
 })
+
+/**
+ * Series ordered for a readout at sample `index`: the most first, then, among those that read the
+ * same once formatted, the soonest `rankBy` time (none last), then their own order.
+ */
+export function rankReadout<T extends { key: string; points: Array<[EpochMs, number]> }>(
+  series: T[],
+  index: number,
+  format: (value: number) => string,
+  rankBy: (key: string, index: number) => EpochMs | null,
+): T[] {
+  const value = (s: T) => s.points[index]?.[1] ?? 0
+  const time = (s: T) => rankBy(s.key, index) ?? Number.POSITIVE_INFINITY
+  return series
+    .map((s, order) => ({ s, order }))
+    .sort((a, b) => {
+      if (format(value(a.s)) !== format(value(b.s))) return value(b.s) - value(a.s)
+      return time(a.s) - time(b.s) || a.order - b.order
+    })
+    .map(({ s }) => s)
+}
 
 const HOUR = 60 * 60 * 1000
 const TICK_HOURS = [1, 2, 3, 6, 12, 24, 48]

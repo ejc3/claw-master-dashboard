@@ -739,13 +739,14 @@ describe('the account bars', () => {
         now={NOW}
       />,
     )
-    const items = [...container.querySelectorAll('.cmd-account')]
-    expect(items.map((e) => e.querySelector('.cmd-account-name')?.textContent)).toEqual([
-      'alpha',
-      'bravo',
-      'charlie',
-      'delta',
-    ])
+    const shown = [...container.querySelectorAll('.cmd-account')]
+    const name = (e: Element) => e.querySelector('.cmd-account-name')?.textContent
+    // Most of the week left first.
+    expect(shown.map(name)).toEqual(['charlie', 'delta', 'alpha', 'bravo'])
+    // Read below in the order given.
+    const items = ['alpha', 'bravo', 'charlie', 'delta'].map(
+      (n) => shown.find((e) => name(e) === n) as Element,
+    )
     // bravo's poll reads its week used up, but Anthropic has not refused it: still open. charlie is
     // refused (rate-limited) and out.
     expect(items.map((e) => e.getAttribute('data-open'))).toEqual(['true', 'true', 'false', 'true'])
@@ -879,7 +880,7 @@ describe('the capacity charts', () => {
     expect(readout(five, 'End').getAttribute('aria-valuemax')).toBe(String(5 * 6 - 1))
     // The last weekly point is half a day after b's reset at 60 hours: b is whole again.
     expect(readout(weekly, 'End').getAttribute('aria-valuetext')).toMatch(
-      /b 100% \(resets [^)]+\), total 136%$/,
+      /: b 100% \(resets [^)]+\), a 36% \(resets [^)]+\), total 136%$/,
     )
     // The first points: what is left now, in one subscription's limit (two half-used: 100%).
     expect(readout(weekly, 'Home').getAttribute('aria-valuetext')).toMatch(/100%$/)
@@ -935,6 +936,59 @@ describe('a gap in the capacity charts', () => {
       slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
     })
     expect(slider.getAttribute('aria-valuetext')).not.toContain('None available')
+  })
+})
+
+describe('subscriptions in order of what they have left', () => {
+  // Named against the order they should show in: c has the most left; of a and b, both used up,
+  // b's week resets first.
+  const profile = (name: string, used: number, resetIn: number): ProfileStatus => ({
+    profile: name,
+    band: 'ok',
+    weekly: { usedFraction: used, resetsAt: NOW + resetIn, lengthMs: 168 * HOUR_MS },
+    fiveHour: null,
+    rateLimitedUntil: null,
+    tokenExpiresAt: null,
+    latencyMs: { p50: null, p95: null, p99: null },
+  })
+  const profiles = [
+    profile('a', 1, 60 * HOUR_MS),
+    profile('b', 1, 30 * HOUR_MS),
+    profile('c', 0.5, 90 * HOUR_MS),
+  ]
+  const mount = (element: ReactElement) => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() => root.render(element))
+    return container
+  }
+
+  it('in the row at the top', () => {
+    const container = mount(<PoolAccounts profiles={profiles} now={NOW} />)
+    const names = [...container.querySelectorAll('.cmd-account-name')].map((n) => n.textContent)
+    expect(names).toEqual(['c', 'b', 'a'])
+  })
+
+  it("in the charts' readouts, which say the soonest reset first among equals", () => {
+    const gaps = poolGaps(profiles, NOW, new Map(), NOW)
+    const container = mount(<CapacityOutlook gaps={gaps} profiles={profiles} now={NOW} />)
+    const [weekly, five] = [...container.querySelectorAll('figure')] as HTMLElement[]
+    for (const chart of [weekly, five]) {
+      const slider = chart?.querySelector('[role="slider"]') as HTMLElement
+      act(() => {
+        slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+      })
+      const rows = [...(chart?.querySelectorAll('.cmd-tooltip-row') ?? [])]
+      expect(rows.map((r) => r.textContent?.[0])).toEqual(['c', 'b', 'a'])
+      expect(slider.getAttribute('aria-valuetext')).toMatch(/: c .*, b .*, a /)
+    }
+    // The legend keeps each subscription's own place.
+    const legend = [...(weekly?.querySelectorAll('.cmd-legend button') ?? [])].map(
+      (b) => b.textContent,
+    )
+    expect(legend).toEqual(['a', 'b', 'c'])
   })
 })
 
@@ -1233,7 +1287,11 @@ describe("a subscription's detail", () => {
         />,
       ),
     )
-    const [alpha, bravo] = [...container.querySelectorAll<HTMLButtonElement>('.cmd-account button')]
+    const button = (n: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>('.cmd-account button')].find(
+        (b) => b.querySelector('.cmd-account-name')?.textContent === n,
+      )
+    const [alpha, bravo] = [button('alpha'), button('bravo')]
     act(() => alpha?.click())
     const detail = () => container.querySelector('.cmd-account-detail')?.textContent ?? ''
     expect(detail()).toContain('5-hour 13% used · resets')
