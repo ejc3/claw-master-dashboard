@@ -15,7 +15,12 @@ import {
   tokensOfType,
 } from '../src/core/index'
 import { createDemoSource } from '../src/demo/index'
-import { createDashboardHandler, DashboardPage, FIRST_QUERIES_BUDGET_MS } from '../src/next/index'
+import {
+  createDashboardHandler,
+  DashboardPage,
+  FIRST_QUERIES_AT_ONCE,
+  FIRST_QUERIES_BUDGET_MS,
+} from '../src/next/index'
 import { ForecastHistory } from '../src/react/ForecastHistory'
 import { keepWhileLoading, type Loaded } from '../src/react/hooks'
 import { LineChart, seriesColors } from '../src/react/LineChart'
@@ -110,6 +115,27 @@ const kpiValues = (root: ParentNode) =>
   [...root.querySelectorAll('.cmd-kpi-value')].map((e) => e.textContent)
 
 describe('the first paint', () => {
+  it(`asks for its first queries ${FIRST_QUERIES_AT_ONCE} at a time`, async () => {
+    const demo = createDemoSource({ now: () => NOW })
+    let running = 0
+    let most = 0
+    let asked = 0
+    const source: MetricsSource = {
+      snapshot: () => demo.snapshot(),
+      series: async (q) => {
+        running++
+        asked++
+        most = Math.max(most, running)
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+        running--
+        return demo.series(q)
+      },
+    }
+    await serverPage(ZONE, source)
+    expect(asked).toBe(firstQueries(NOW).length)
+    expect(most).toBe(FIRST_QUERIES_AT_ONCE)
+  })
+
   it('is complete on the server: numbers, charts, the smoothed forecast and clock times', async () => {
     const container = document.createElement('div')
     container.innerHTML = renderToString(await serverPage(ZONE))

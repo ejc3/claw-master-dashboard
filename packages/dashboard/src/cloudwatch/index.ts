@@ -2,6 +2,7 @@ import 'server-only'
 
 import { AwsClient } from 'aws4fetch'
 import { insightsQuery, resolveMetric } from '../core/catalog'
+import { inTurn } from '../core/limit'
 import { validateSeriesQuery } from '../core/query'
 import {
   type AlarmStatus,
@@ -270,6 +271,9 @@ const throttled = (error: unknown): boolean =>
   error instanceof CloudWatchError &&
   (error.code === 'ThrottlingException' || error.code === 'Throttling' || error.status === 429)
 
+/** How many of the snapshot's queries run at once. */
+export const SNAPSHOT_QUERIES_AT_ONCE = 4
+
 /** The most series one Metrics Insights query returns; past it, the rest are left out. */
 export const MAX_INSIGHTS_SERIES = 500
 
@@ -450,7 +454,9 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
       const now = clock()
       const end = Math.floor(now / 60_000) * 60_000 + 60_000
       const start = end - SNAPSHOT_LOOKBACK_MS
-      const read = (query: string, from = start) => cached(query, from, end, 60)
+      // A few at a time: CloudWatch runs ten Metrics Insights queries a second per account.
+      const turn = inTurn(SNAPSHOT_QUERIES_AT_ONCE)
+      const read = (query: string, from = start) => turn(() => cached(query, from, end, 60))
       const [
         used,
         resets,

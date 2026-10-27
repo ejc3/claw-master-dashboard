@@ -4,6 +4,7 @@ import { after } from 'next/server'
 import type { ReactNode } from 'react'
 import {
   BadQueryError,
+  inTurn,
   type MetricsSource,
   type Series,
   type Snapshot,
@@ -128,6 +129,9 @@ const failed = (what: string, error: unknown) =>
  */
 export const FIRST_QUERIES_BUDGET_MS = 2_500
 
+/** How many of the first queries the page asks for at once. */
+export const FIRST_QUERIES_AT_ONCE = 6
+
 /** The answer, or null when it fails (thrown or rejected) or misses the budget. */
 async function withinBudget<T>(
   what: string,
@@ -163,6 +167,8 @@ async function withinBudget<T>(
 export async function DashboardPage(props: DashboardPageProps): Promise<ReactNode> {
   if (!(await props.authorize())) return props.unauthorized
   const renderedAt = Date.now()
+  // A few at a time: CloudWatch runs ten Metrics Insights queries a second per account.
+  const turn = inTurn(FIRST_QUERIES_AT_ONCE)
   const [initialSnapshot, answers, initialAlarms] = await Promise.all([
     // Through a promise, so a source that throws instead of rejecting fails this read alone.
     Promise.resolve()
@@ -175,7 +181,7 @@ export async function DashboardPage(props: DashboardPageProps): Promise<ReactNod
       firstQueries(renderedAt).map(async (query) => {
         const series = await withinBudget(
           `the first ${query.metric} query`,
-          () => props.source().series(query),
+          () => turn(() => props.source().series(query)),
           props.keepAlive ?? after,
         )
         return series === null ? null : ([queryKey(query), series] as const)
