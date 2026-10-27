@@ -243,8 +243,8 @@ export function ForecastHistory(props: {
       )}
       {!measuring && historyFailed && (
         <p className="cmd-empty cmd-forecast-unread">
-          Couldn't read last week's readings, so last week isn't shown and the week ahead is at the
-          last 24 hours' average pace. Trying again.
+          Couldn't read last week's readings, so only the week ahead is shown
+          {replaying ? '' : ", at the last 24 hours' average pace"}. Trying again.
         </p>
       )}
       {lines.some((l) => l !== null) && (
