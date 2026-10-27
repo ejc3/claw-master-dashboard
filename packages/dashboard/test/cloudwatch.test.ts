@@ -5,6 +5,7 @@ import {
   CloudWatchError,
   createCloudWatchSource,
   DEFAULT_CACHE_MS,
+  DEFAULT_THROTTLE_RETRIES_MS,
   FIVE_HOUR_LOOKBACK_MS,
   fiveHourWindow,
   foldAliases,
@@ -56,16 +57,31 @@ function fakeCloudWatch(answer: Answer) {
 
 function source(answer: Answer, options: { now?: () => number; cacheMs?: number } = {}) {
   const fake = fakeCloudWatch(answer)
+  // The waits before each retry, taken at once.
+  const slept: number[] = []
   const src = createCloudWatchSource({
     accessKeyId: 'AKIAEXAMPLE',
     secretAccessKey: 'example-secret',
     region: 'us-test-1',
     fetch: fake.fetchImpl,
     now: options.now ?? (() => NOW),
+    sleep: async (ms) => {
+      slept.push(ms)
+    },
     ...(options.cacheMs === undefined ? {} : { cacheMs: options.cacheMs }),
   })
-  return { src, ...fake }
+  return { src, slept, ...fake }
 }
+
+/** CloudWatch's answer to a call made while too many run. */
+const throttledAnswer = () =>
+  new Response(
+    JSON.stringify({
+      __type: 'com.amazon.coral.service#ThrottlingException',
+      message: 'Query has been throttled',
+    }),
+    { status: 400 },
+  )
 
 const t0 = NOW - 10 * 60_000
 
@@ -249,18 +265,46 @@ describe('createCloudWatchSource', () => {
     expect(calls).toHaveBeenCalledTimes(5)
   })
 
+  it('retries a throttled call after a growing wait, and answers once it gets through', async () => {
+    let refusals = 2
+    const { src, calls, slept } = source(() =>
+      refusals-- > 0 ? throttledAnswer() : { MetricDataResults: [result('q', [[t0, 1]])] },
+    )
+    const answer = await src.series({
+      metric: 'backupRequests',
+      range: { start: t0, end: NOW },
+      stepSeconds: 300,
+    })
+    expect(answer).toHaveLength(1)
+    expect(calls).toHaveBeenCalledTimes(3)
+    expect(slept).toHaveLength(2)
+    // Each wait is its step plus up to as much again.
+    const [first = 0, second = 0] = DEFAULT_THROTTLE_RETRIES_MS
+    expect(slept[0]).toBeGreaterThanOrEqual(first)
+    expect(slept[0]).toBeLessThan(2 * first)
+    expect(slept[1]).toBeGreaterThanOrEqual(second)
+    expect(slept[1]).toBeLessThan(2 * second)
+  })
+
+  it('does not retry a refusal that is not throttling', async () => {
+    const { src, calls } = source(
+      () =>
+        new Response(
+          JSON.stringify({ __type: 'com.amazon.coral.service#InvalidParameterValueException' }),
+          { status: 400 },
+        ),
+    )
+    const error = await src
+      .series({ metric: 'backupRequests', range: { start: t0, end: NOW }, stepSeconds: 300 })
+      .catch((e: unknown) => e)
+    expect((error as CloudWatchError).code).toBe('InvalidParameterValueException')
+    expect(calls).toHaveBeenCalledTimes(1)
+  })
+
   it('does not keep a failure: the next caller asks again', async () => {
     let fail = true
     const { src, calls } = source(() =>
-      fail
-        ? new Response(
-            JSON.stringify({
-              __type: 'com.amazon.coral.service#ThrottlingException',
-              message: 'Rate exceeded',
-            }),
-            { status: 400 },
-          )
-        : { MetricDataResults: [result('q', [[t0, 1]])] },
+      fail ? throttledAnswer() : { MetricDataResults: [result('q', [[t0, 1]])] },
     )
     const query = {
       metric: 'backupRequests' as const,
@@ -271,9 +315,11 @@ describe('createCloudWatchSource', () => {
     expect(error).toBeInstanceOf(CloudWatchError)
     expect((error as CloudWatchError).code).toBe('ThrottlingException')
     expect((error as CloudWatchError).status).toBe(400)
+    // Every retry was refused too.
+    expect(calls).toHaveBeenCalledTimes(DEFAULT_THROTTLE_RETRIES_MS.length + 1)
     fail = false
     expect(await src.series(query)).toHaveLength(1)
-    expect(calls).toHaveBeenCalledTimes(2)
+    expect(calls).toHaveBeenCalledTimes(DEFAULT_THROTTLE_RETRIES_MS.length + 2)
   })
 
   it('composes the snapshot from the gauges, one query each', async () => {
