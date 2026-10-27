@@ -222,6 +222,30 @@ function availability(p: ProfileStatus, now: EpochMs): string {
 }
 
 /**
+ * Subscriptions in the order the row shows them: the most of its week left first, then, among
+ * those that read the same, the soonest weekly reset (unknown last); no reading at the end.
+ */
+export function orderByLeft(profiles: ProfileStatus[], now: EpochMs): ProfileStatus[] {
+  const left = (p: ProfileStatus) => {
+    const used = share(p.weekly.usedFraction)
+    return used === null ? null : 1 - used
+  }
+  const resets = (p: ProfileStatus) =>
+    p.weekly.resetsAt !== null && p.weekly.resetsAt > now ? p.weekly.resetsAt : Infinity
+  return profiles
+    .map((p, order) => ({ p, order }))
+    .sort((a, b) => {
+      const la = left(a.p)
+      const lb = left(b.p)
+      if (la === null || lb === null) {
+        if (la !== lb) return la === null ? 1 : -1
+      } else if (formatPercent(la) !== formatPercent(lb)) return lb - la
+      return resets(a.p) - resets(b.p) || a.order - b.order
+    })
+    .map(({ p }) => p)
+}
+
+/**
  * Each subscription's weekly and 5-hour use, as two tiny bars, and whether it can take work.
  * Hovering (with a mouse) or tapping one shows its detail below the row: when each limit resets,
  * with a link to put that in a calendar. A mouse leaving the subscriptions, a tap anywhere else, or
@@ -272,7 +296,7 @@ export function PoolAccounts(props: {
       }}
     >
       <ul aria-label="What each subscription has left of its weekly and 5-hour limits">
-        {props.profiles.map((p) => {
+        {orderByLeft(props.profiles, props.now).map((p) => {
           const weekly = share(p.weekly.usedFraction)
           // What the 5-hour window really leaves: nothing while refused, never more than the week.
           const fiveLeft = fiveHourLeft(p, props.now)
@@ -500,6 +524,8 @@ export function CapacityOutlook(props: {
         height={height}
         now={now}
         stacked
+        // Most left first, and among equals the week that resets soonest.
+        rankBy={(name, index) => weekResets.get(name)?.[index] ?? null}
         {...(key === 'weekly' ? { note: weekBack, noteLabel: 'resets' } : {})}
       />
     )
