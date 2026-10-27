@@ -41,6 +41,41 @@ export function tokenCoverage(
 }
 
 /**
+ * One token choice from a query split by type (byType: keys "<group> <type>"): that type's lines
+ * under their groups' names, or for 'all' each group's types summed at each time. Groups keep the
+ * order they first appear in.
+ */
+export function tokensOfType(series: readonly Series[], choice: TokenChoice): Series[] {
+  const groups = new Map<string, Map<EpochMs, number>>()
+  for (const s of series) {
+    const at = s.key.lastIndexOf(' ')
+    if (at < 0) continue
+    const type = s.key.slice(at + 1)
+    if (!(TOKEN_TYPES as readonly string[]).includes(type)) continue
+    if (choice !== 'all' && type !== choice) continue
+    const group = s.key.slice(0, at)
+    let sums = groups.get(group)
+    if (sums === undefined) {
+      sums = new Map()
+      groups.set(group, sums)
+    }
+    for (const [t, v] of s.points) sums.set(t, (sums.get(t) ?? 0) + v)
+  }
+  return [...groups].map(([key, sums]) => ({
+    key,
+    points: [...sums].sort((a, b) => a[0] - b[0]),
+  }))
+}
+
+/** Every type's lines from a query split by type, under their groups' names. */
+export function tokensByType(series: readonly Series[]): Record<TokenType, Series[]> {
+  return Object.fromEntries(TOKEN_TYPES.map((t) => [t, tokensOfType(series, t)])) as Record<
+    TokenType,
+    Series[]
+  >
+}
+
+/**
  * Drops the buckets before the counters started, so a range that begins before the release
  * does not show zeros for time nobody counted. Series are on the step grid (see fillSeries).
  */

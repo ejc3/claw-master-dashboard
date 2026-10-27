@@ -114,6 +114,8 @@ export {
   tokenCoverage,
   tokenRows,
   tokensBetween,
+  tokensByType,
+  tokensOfType,
 } from './tokens'
 export * from './types'
 export { seriesQueryFromParams, seriesQueryToParams } from './wire'

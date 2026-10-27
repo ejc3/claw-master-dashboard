@@ -324,7 +324,7 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
     }
   }
 
-  return {
+  const source: MetricsSource = {
     async alarms(): Promise<AlarmStatus[]> {
       const now = clock()
       // Made-up alarms: one open, one cleared this morning, one cleared days ago.
@@ -373,7 +373,24 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
     async series(query: SeriesQuery): Promise<Series[]> {
       validateSeriesQuery(query)
       // Refuse what claude-master does not emit, exactly as a real source must.
-      const { statistic } = resolveMetric(query.metric, query.groupBy, query.tokenType)
+      const { statistic } = resolveMetric(
+        query.metric,
+        query.groupBy,
+        query.tokenType,
+        query.byType,
+      )
+      if (query.byType === true) {
+        const { byType: _, ...each } = query
+        const types = await Promise.all(
+          TOKEN_TYPES.map(async (tokenType) =>
+            (await source.series({ ...each, tokenType })).map((s) => ({
+              ...s,
+              key: `${s.key} ${tokenType}`,
+            })),
+          ),
+        )
+        return types.flat()
+      }
       const now = clock()
       const stepMs = query.stepSeconds * 1000
       const keys = query.groupBy === undefined ? ['total'] : DEMO_VALUES[query.groupBy]
@@ -399,4 +416,5 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
       return keys.map((key, i) => ({ key, points: points[i] ?? [] }))
     },
   }
+  return source
 }

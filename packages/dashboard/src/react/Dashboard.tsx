@@ -32,6 +32,7 @@ import {
   tokenChoiceLabel,
   tokenCoverage,
   tokensBetween,
+  tokensOfType,
   WEEKLY_SMOOTHING_MS,
 } from '../core'
 import { useSharedAnswers } from './answers'
@@ -70,6 +71,7 @@ import {
   type RangeName,
   readingsQuery,
   tabQueries,
+  tokensByProfileQuery,
 } from './queries'
 import { RunwayCard } from './Runway'
 
@@ -160,7 +162,6 @@ function DashboardBody(props: DashboardProps) {
   const [rangeName, setRangeName] = useState<RangeName>(FIRST_RANGE)
   const [tokenChoice, setTokenChoice] = useState<TokenChoice>('all')
   const chosen = RANGES[rangeName]
-  const tokenType = tokenChoice === 'all' ? {} : { tokenType: tokenChoice }
 
   // The request URLs change once per step, not every second (useSeries keys on the URL).
   const inRange = (q: Omit<SeriesQuery, 'range' | 'stepSeconds'>): SeriesQuery =>
@@ -169,10 +170,8 @@ function DashboardBody(props: DashboardProps) {
   const byProfile = useSeries(apiBase, inRange({ metric: 'requests', groupBy: 'profile' }))
   // Tokens are what matters; requests are the fallback for a range with no token counts yet
   // (before the release that counts them).
-  const tokensByProfile = useCountedSeries(
-    apiBase,
-    inRange({ metric: 'tokens', groupBy: 'profile', ...tokenType }),
-  )
+  // Every token choice in one answer, by subscription and type.
+  const tokensByProfile = useCountedSeries(apiBase, tokensByProfileQuery(now, rangeName))
   const tokenRangeCoverage =
     tokensByProfile.loaded.state === 'ready'
       ? tokenCoverage(tokensByProfile.firstAt, range, chosen.stepSeconds)
@@ -222,7 +221,7 @@ function DashboardBody(props: DashboardProps) {
   // Projects that used tokens in the last day ("none" is work no launch named a project for).
   const projectsLoaded = useSeries(apiBase, projectsQuery(now))
   const projectsData = data(projectsLoaded)
-  const projectTotals = (projectsData ?? [])
+  const projectTotals = tokensOfType(projectsData ?? [], 'all')
     .filter((s) => s.key !== 'none')
     .map((s) => ({ key: s.key, total: s.points.reduce((sum, [, v]) => sum + v, 0) }))
     .filter((p) => p.total > 0)
@@ -262,7 +261,11 @@ function DashboardBody(props: DashboardProps) {
   const requestsForRate = lastHour(total(kpiRate?.data.requests ?? null), rateEnd)
 
   const byProfileData = data(byProfile)
-  const tokensByProfileData = data(tokensByProfile.loaded)
+  const tokensByProfileTypes = data(tokensByProfile.loaded)
+  const tokensByProfileData = useMemo(
+    () => (tokensByProfileTypes === null ? null : tokensOfType(tokensByProfileTypes, tokenChoice)),
+    [tokensByProfileTypes, tokenChoice],
+  )
   const showTokens = tokenRangeCoverage !== null && tokenRangeCoverage !== 'none'
   const chartData = showTokens
     ? fromFirstBucket(tokensByProfileData ?? [], tokensByProfile.firstAt, chosen.stepSeconds)
@@ -441,10 +444,9 @@ function DashboardBody(props: DashboardProps) {
   const backupOutputTokens =
     backupOutputData === null
       ? null
-      : (backupOutputData.find((s) => s.key === 'api-backup')?.points ?? []).reduce(
-          (sum, [, v]) => sum + v,
-          0,
-        )
+      : (
+          tokensOfType(backupOutputData, 'output').find((s) => s.key === 'api-backup')?.points ?? []
+        ).reduce((sum, [, v]) => sum + v, 0)
   const rangeWords = rangeName === '24h' ? 'last 24 hours' : 'last 7 days'
 
   const tokenControl = (

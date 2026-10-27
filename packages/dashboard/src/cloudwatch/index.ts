@@ -15,6 +15,7 @@ import {
   type Series,
   type SeriesQuery,
   type Snapshot,
+  TOKEN_TYPES,
   WEEK_MS,
 } from '../core/types'
 
@@ -268,6 +269,9 @@ export const DEFAULT_THROTTLE_RETRIES_MS: readonly number[] = [400, 1200, 3000]
 const throttled = (error: unknown): boolean =>
   error instanceof CloudWatchError &&
   (error.code === 'ThrottlingException' || error.code === 'Throttling' || error.status === 429)
+
+/** The most series one Metrics Insights query returns; past it, the rest are left out. */
+export const MAX_INSIGHTS_SERIES = 500
 
 interface CacheEntry {
   expiresAt: EpochMs
@@ -603,14 +607,28 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
 
     async series(query: SeriesQuery): Promise<Series[]> {
       validateSeriesQuery(query)
-      const resolved = resolveMetric(query.metric, query.groupBy, query.tokenType)
+      const resolved = resolveMetric(query.metric, query.groupBy, query.tokenType, query.byType)
       const expression = insightsQuery(namespace, resolved)
-      const results = await cached(
-        expression,
-        query.range.start,
-        query.range.end,
-        query.stepSeconds,
-      )
+      const { start, end } = query.range
+      let results = await cached(expression, start, end, query.stepSeconds)
+      // At the cap, some groups and types were left out: one query per type instead, labelled as
+      // the grouped query labels them.
+      if (resolved.byType === true && results.length >= MAX_INSIGHTS_SERIES) {
+        const { byType: _, ...each } = resolved
+        const types = await Promise.all(
+          TOKEN_TYPES.map(async (tokenType) =>
+            (
+              await cached(
+                insightsQuery(namespace, { ...each, tokenType }),
+                start,
+                end,
+                query.stepSeconds,
+              )
+            ).map((r) => ({ ...r, label: `${r.label} ${tokenType}` })),
+          ),
+        )
+        results = types.flat()
+      }
       // Without GROUP BY, CloudWatch labels the one result with the query id.
       const series = results.map((result) => ({
         key: query.groupBy === undefined ? 'total' : result.label,
@@ -623,7 +641,16 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
       } catch {
         map = new Map<string, string>()
       }
-      return foldAliases(series, map, resolved.statistic)
+      if (query.byType !== true) return foldAliases(series, map, resolved.statistic)
+      // Each type's lines folded on their own, then keyed by group and type again.
+      const types = new Map<string, Series[]>()
+      for (const s of series) {
+        const [group, type] = splitLabel(s.key)
+        types.set(type, [...(types.get(type) ?? []), { key: group, points: s.points }])
+      }
+      return [...types].flatMap(([type, list]) =>
+        foldAliases(list, map, resolved.statistic).map((s) => ({ ...s, key: `${s.key} ${type}` })),
+      )
     },
   }
 }

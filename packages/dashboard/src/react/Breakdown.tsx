@@ -7,7 +7,6 @@ import {
   formatPercent,
   fromFirstBucket,
   type Series,
-  type SeriesQuery,
   type TimeRange,
   TOKEN_LABELS,
   TOKEN_TYPES,
@@ -16,8 +15,8 @@ import {
   tokenChoiceLabel,
   tokenCoverage,
   tokenRows,
+  tokensByType,
 } from '../core/index'
-import { useSharedAnswers } from './answers'
 import { useCountedSeries, useHeldHeight, useSeries, useWhen } from './hooks'
 import { type ChartSeries, foldSeries, LineChart, seriesColors } from './LineChart'
 import { shortNames } from './Pool'
@@ -127,35 +126,17 @@ export function Breakdown(props: {
   const [split, setSplit] = useState(SPLITS[0] as (typeof SPLITS)[number])
   const queries = breakdownQueries(props.range, props.stepSeconds, split)
   const requests = useSeries(props.apiBase, queries.requests)
-  // One query per token type, each split the same way; none for models.
-  const tokenQuery = (tokenType: TokenType): SeriesQuery | null =>
-    queries.tokens?.[tokenType] ?? null
-  const input = useCountedSeries(props.apiBase, tokenQuery('input'))
-  const output = useCountedSeries(props.apiBase, tokenQuery('output'))
-  const cacheRead = useCountedSeries(props.apiBase, tokenQuery('cache_read'))
-  const cacheWrite = useCountedSeries(props.apiBase, tokenQuery('cache_creation'))
-  const byTypeLoaded = { input, output, cache_read: cacheRead, cache_creation: cacheWrite }
-  // The rows add the types together: only the range all four answers cover.
-  const byType = useSharedAnswers({
-    input: input.loaded,
-    output: output.loaded,
-    cache_read: cacheRead.loaded,
-    cache_creation: cacheWrite.loaded,
-  })
-
-  const typesReady = TOKEN_TYPES.every((t) => byTypeLoaded[t].loaded.state === 'ready')
-  const typeFailure = TOKEN_TYPES.map((t) => byTypeLoaded[t].loaded).find(
-    (l) => l.state === 'error',
-  )
-  const starts = TOKEN_TYPES.map((t) => byTypeLoaded[t].firstAt).filter(
-    (at): at is EpochMs => at !== null,
-  )
-  const firstAt = starts.length === 0 ? null : Math.min(...starts)
+  // Every token type in one query, split the same way; none for models.
+  const tokens = useCountedSeries(props.apiBase, queries.tokens)
+  const typesReady = tokens.loaded.state === 'ready'
+  const typeFailure = tokens.loaded.state === 'error' ? tokens.loaded : undefined
+  const firstAt = tokens.firstAt
   const coverage = typesReady ? tokenCoverage(firstAt, props.range, props.stepSeconds) : null
   const showTokens = split.tokens && coverage !== null && coverage !== 'none'
 
   // Worked out again only when an answer or a choice changes, not on every tick of the clock.
-  const typeData = byType?.data
+  const tokenData = tokens.loaded.state === 'ready' ? tokens.loaded.data : null
+  const typeData = useMemo(() => (tokenData === null ? null : tokensByType(tokenData)), [tokenData])
   const tokenTable = useMemo(
     () =>
       showTokens

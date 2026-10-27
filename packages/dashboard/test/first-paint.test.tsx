@@ -11,8 +11,8 @@ import {
   type ProfileStatus,
   poolGaps,
   seriesQueryFromParams,
-  TOKEN_TYPES,
   timeZoneOrNull,
+  tokensOfType,
 } from '../src/core/index'
 import { createDemoSource } from '../src/demo/index'
 import { createDashboardHandler, DashboardPage, FIRST_QUERIES_BUDGET_MS } from '../src/next/index'
@@ -28,7 +28,13 @@ import {
   PoolOutlook,
   shortNames,
 } from '../src/react/Pool'
-import { chartQuery, FIRST_RANGE, firstQueries, RANGES } from '../src/react/queries'
+import {
+  chartQuery,
+  FIRST_RANGE,
+  firstQueries,
+  RANGES,
+  tokensByProfileQuery,
+} from '../src/react/queries'
 import { RunwayCard } from '../src/react/Runway'
 
 // A moment two minutes into a five-minute step, so a step boundary is near but not crossed.
@@ -512,10 +518,11 @@ describe('answers shown together, while a moved range loads', () => {
       .mocked(fetch)
       .mock.calls.map(([input]) => new URL(String(input), 'http://localhost').searchParams)
       .filter((p) => p.get('groupBy') === 'project')
-    // Each range's split is asked once (the other range in the background), and only tokens.
+    // Every type in one query, and only tokens. The range on screen is not asked at all: it is
+    // the active-projects list's query too, answered with the page.
     const shown = asked.filter((p) => p.get('step') === String(RANGES[FIRST_RANGE].stepSeconds))
-    expect(shown.length).toBe(4)
-    expect(asked.every((p) => p.get('metric') === 'tokens')).toBe(true)
+    expect(shown.length).toBe(0)
+    expect(asked.every((p) => p.get('metric') === 'tokens' && p.get('byType') === '1')).toBe(true)
   })
 
   it('the error-rate chart has only hours both answers cover', async () => {
@@ -549,8 +556,10 @@ describe('answers shown together, while a moved range loads', () => {
     expect(rateTile(container)).toBe(before)
   })
 
-  it('the table adds token types over the range all four answers cover', async () => {
-    const { container } = await stepOn((p) => p.get('type') === 'input')
+  it("the table's token types come from one answer, at the range it moved to", async () => {
+    const { container } = await stepOn(
+      (p) => p.get('groupBy') === 'client_account' && p.get('byType') === '1',
+    )
     const rows = [
       ...container.querySelectorAll('section[aria-labelledby="cmd-breakdown-title"] tbody tr'),
     ]
@@ -558,9 +567,8 @@ describe('answers shown together, while a moved range loads', () => {
     const person = first?.querySelector('th')?.textContent
     const input = first?.querySelector('td')?.textContent
     if (person == null || input == null) throw new Error('no table row')
-    // Input over the range every type covers: from the new start to the kept answers' end.
+    // Input over the moved range, from the one answer every type came in.
     const newEnd = Date.UTC(2026, 9, 9, 18, 5)
-    const oldEnd = Date.UTC(2026, 9, 9, 18, 0)
     const [inputSeries] = (
       await demo.series({
         metric: 'tokens',
@@ -571,7 +579,7 @@ describe('answers shown together, while a moved range loads', () => {
       })
     ).filter((s) => s.key === person)
     const shared = (inputSeries?.points ?? [])
-      .filter(([t]) => t >= newEnd - 24 * HOUR_MS && t < oldEnd)
+      .filter(([t]) => t >= newEnd - 24 * HOUR_MS && t < newEnd)
       .reduce((sum, [, v]) => sum + v, 0)
     expect(input).toBe(formatCount(shared))
   })
@@ -1427,11 +1435,11 @@ describe('the paid API box', () => {
       snapshot: () => demo.snapshot(),
       series: async (q) => {
         const answer = await demo.series(q)
-        if (q.metric === 'tokens' && q.groupBy === 'profile' && q.tokenType === 'output') {
+        if (q.metric === 'tokens' && q.groupBy === 'profile' && q.byType === true) {
           return [
             ...answer,
             {
-              key: 'api-backup',
+              key: 'api-backup output',
               points: [
                 [q.range.start, 1000],
                 [q.range.start + 300_000, 500],
@@ -1628,32 +1636,17 @@ describe('the breakdown table', () => {
     const phoneTotal = cells.find((td) => td.classList.contains('cmd-phone'))?.textContent
     expect(cells.filter((td) => td.classList.contains('cmd-full'))).toHaveLength(4)
     const key = name?.querySelector('.cmd-full')?.textContent
-    // The table's four queries, one per token type, over the range on screen. Not every one is
-    // fetched: output by subscription is also the paid backup's query, rendered with the page.
-    const asked = fetchMock.mock.calls
-      .map(([url]) => new URL(url, 'https://dashboard.example'))
-      .find(
-        (u) =>
-          u.searchParams.get('metric') === 'tokens' &&
-          u.searchParams.get('groupBy') === 'profile' &&
-          u.searchParams.get('type') === 'input' &&
-          u.searchParams.get('step') === String(RANGES[FIRST_RANGE].stepSeconds),
-      ) as URL
-    const served = TOKEN_TYPES.map((type) => {
-      const u = new URL(asked)
-      u.searchParams.set('type', type)
-      return u
-    })
-    let sum = 0
+    // The table's one query, every token type by subscription over the range on screen: the
+    // subscription chart's too, rendered with the page, so not fetched again.
+    const answer = await source.series(tokensByProfileQuery(Date.now(), FIRST_RANGE))
+    const sum =
+      tokensOfType(answer, 'all')
+        .find((s) => s.key === key)
+        ?.points.reduce((total, [, v]) => total + v, 0) ?? 0
     // Every subscription's tokens in the last bucket, which the stacked chart's readout totals.
     const lastBucket = new Map<number, number>()
-    for (const u of served) {
-      const answer = await source.series(seriesQueryFromParams(u.searchParams))
-      const series = answer.find((s) => s.key === key)
-      sum += series?.points.reduce((total, [, v]) => total + v, 0) ?? 0
-      for (const s of answer) {
-        for (const [t, v] of s.points) lastBucket.set(t, (lastBucket.get(t) ?? 0) + v)
-      }
+    for (const s of answer) {
+      for (const [t, v] of s.points) lastBucket.set(t, (lastBucket.get(t) ?? 0) + v)
     }
     const latest = Math.max(...lastBucket.keys())
     expect(sum).toBeGreaterThan(0)

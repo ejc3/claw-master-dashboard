@@ -11,6 +11,8 @@ export interface ResolvedMetric {
   groupBy?: Dimension
   /** Only points of this token type (tokens only). */
   tokenType?: TokenType
+  /** Split by token type as well as by groupBy (tokens only). */
+  byType?: boolean
 }
 
 interface Entry {
@@ -144,12 +146,16 @@ export function resolveMetric(
   metric: SemanticMetric,
   groupBy?: Dimension,
   tokenType?: TokenType,
+  byType?: boolean,
 ): ResolvedMetric {
   const entry = CATALOG[metric]
-  if (tokenType !== undefined && metric !== 'tokens') {
+  if ((tokenType !== undefined || byType === true) && metric !== 'tokens') {
     throw new UnsupportedQueryError(metric, 'type')
   }
-  const typed = tokenType === undefined ? {} : { tokenType }
+  const typed = {
+    ...(tokenType === undefined ? {} : { tokenType }),
+    ...(byType === true ? { byType } : {}),
+  }
   if (groupBy === undefined) return { name: entry.name, statistic: entry.statistic, ...typed }
   if (entry.dimensions.includes(groupBy)) {
     return { name: entry.name, statistic: entry.statistic, groupBy, ...typed }
@@ -185,7 +191,11 @@ export function insightsQuery(namespace: string, resolved: ResolvedMetric): stri
   if (!/^[A-Za-z0-9 ._\-/#:]{1,255}$/.test(namespace)) {
     throw new Error('the namespace must be 1-255 letters, digits or . _ - / # : and spaces')
   }
-  const group = resolved.groupBy === undefined ? '' : ` GROUP BY ${identifier(resolved.groupBy)}`
+  const groups = [
+    ...(resolved.groupBy === undefined ? [] : [identifier(resolved.groupBy)]),
+    ...(resolved.byType === true ? [identifier('type')] : []),
+  ]
+  const group = groups.length === 0 ? '' : ` GROUP BY ${groups.join(', ')}`
   // The token type is one of four fixed words (checked where the query is parsed), so it is
   // written into the query as it is.
   const where =
