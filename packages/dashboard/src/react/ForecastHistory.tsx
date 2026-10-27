@@ -119,12 +119,15 @@ export function ForecastHistory(props: {
   // The two weeks around now, hour by hour, and the forecast's clock between them.
   const clock = shown?.clock ?? now
   // Exactly a week either side, so nothing at either end is rounded away; on the hour between.
+  // Without last week's readings, the week ahead alone: a week drawn at zero would read as one
+  // measured with no waste and no time without tokens.
+  const from = measuring ? clock - WEEK_MS : clock
   const times = useMemo(() => {
-    const grid = new Set<EpochMs>([clock - WEEK_MS, clock, clock + WEEK_MS])
-    const first = Math.ceil((clock - WEEK_MS) / HOUR_MS) * HOUR_MS
+    const grid = new Set<EpochMs>([from, clock, clock + WEEK_MS])
+    const first = Math.ceil(from / HOUR_MS) * HOUR_MS
     for (let t = first; t < clock + WEEK_MS; t += HOUR_MS) grid.add(t)
     return [...grid].sort((a, b) => a - b)
-  }, [clock])
+  }, [from, clock])
 
   // Before now, what the readings show; after it, what the chosen forecast expects.
   const past = useMemo(() => {
@@ -237,6 +240,12 @@ export function ForecastHistory(props: {
             />
           )
         })
+      )}
+      {!measuring && historyFailed && (
+        <p className="cmd-empty cmd-forecast-unread">
+          Couldn't read last week's readings, so only the week ahead is shown
+          {replaying ? '' : ", at the last 24 hours' average pace"}. Trying again.
+        </p>
       )}
       {lines.some((l) => l !== null) && (
         <ul className="cmd-facts cmd-forecast-facts">

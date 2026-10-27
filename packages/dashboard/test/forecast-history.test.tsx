@@ -212,7 +212,14 @@ describe('ForecastHistory', () => {
     expect(page.container.querySelector('figcaption')?.textContent).toBe(
       'Wasted at resets · 40% this week',
     )
-    expect(page.tables().at(-1)).toHaveLength(2 * 168 + 3)
+    // The week ahead alone, from the clock (12:05) through every hour to a week on: last week is
+    // not drawn as a week of zeros.
+    const rows = page.tables().at(-1) ?? []
+    expect(rows).toHaveLength(168 + 2)
+    expect(rows.at(-1)?.[1]).toBe('0h')
+    expect(page.container.querySelector('.cmd-forecast-unread')?.textContent).toMatch(
+      /^Couldn't read last week's readings/,
+    )
   })
 
   it('forecasts with the last 24 hours replayed, or last week, once the readings are in', async () => {

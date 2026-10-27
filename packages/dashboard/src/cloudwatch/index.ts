@@ -47,6 +47,13 @@ export interface CloudWatchSourceOptions {
    * fails, the series are shown unfolded.
    */
   accountAliases?: ReadonlyMap<string, string> | (() => Promise<ReadonlyMap<string, string>>)
+  /**
+   * How long to wait before each retry of a throttled call, in ms (each wait gets up to as much
+   * again at random, so a page's queries do not retry in step). Empty: no retries.
+   */
+  throttleRetriesMs?: readonly number[]
+  /** Waits `ms`; tests pass one that does not. */
+  sleep?: (ms: number) => Promise<void>
 }
 
 /** CloudWatch refused or failed a request; `code` is its error type, the message its text. */
@@ -250,6 +257,18 @@ export function splitLabel(label: string): [string, string] {
   return at < 0 ? [label, ''] : [label.slice(0, at), label.slice(at + 1)]
 }
 
+/**
+ * The waits before retrying a throttled call. A page load asks for about forty queries at once,
+ * and CloudWatch throttles Metrics Insights when too many run together: spread over a few seconds,
+ * they get through.
+ */
+export const DEFAULT_THROTTLE_RETRIES_MS: readonly number[] = [400, 1200, 3000]
+
+/** Whether CloudWatch refused a call for its rate, not for the call itself. */
+const throttled = (error: unknown): boolean =>
+  error instanceof CloudWatchError &&
+  (error.code === 'ThrottlingException' || error.code === 'Throttling' || error.status === 429)
+
 interface CacheEntry {
   expiresAt: EpochMs
   result: InsightsResult[]
@@ -270,11 +289,27 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
     service: 'monitoring',
   })
   const cache = new Map<string, CacheEntry>()
+  const retries = options.throttleRetriesMs ?? DEFAULT_THROTTLE_RETRIES_MS
+  const sleep =
+    options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
 
+  /** One call, retried after a wait while CloudWatch throttles it. */
   async function call(
     body: Record<string, unknown>,
     action = 'GetMetricData',
   ): Promise<WireResponse> {
+    for (const wait of retries) {
+      try {
+        return await callOnce(body, action)
+      } catch (error) {
+        if (!throttled(error)) throw error
+        await sleep(wait + Math.random() * wait)
+      }
+    }
+    return callOnce(body, action)
+  }
+
+  async function callOnce(body: Record<string, unknown>, action: string): Promise<WireResponse> {
     const request = await client.sign(endpoint, {
       method: 'POST',
       headers: {
