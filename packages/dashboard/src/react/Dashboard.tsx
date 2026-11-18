@@ -199,9 +199,9 @@ function DashboardBody(props: DashboardProps) {
     [apiBase, rangeName, rangeEnds],
   )
   usePrefetch(tabUrls, SERIES_POLL_MS, shownLoaded)
-  // Each subscription's weekly readings over the range, as returned (not zero-filled): how many
+  // Each subscription's band readings over the range, as returned (not zero-filled): how many
   // subscriptions the pool had, so a step up in capacity shows when one was added.
-  const subsQuery = inRange({ metric: 'weeklyUsed', groupBy: 'profile' })
+  const subsQuery = inRange({ metric: 'quotaBand', groupBy: 'profile' })
   const subsData = data(useReadings(apiBase, subsQuery))
   const { start: subsStart, end: subsEnd } = subsQuery.range
   const subsLine: ChartSeries[] = useMemo(

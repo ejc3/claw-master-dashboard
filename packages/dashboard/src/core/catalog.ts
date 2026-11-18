@@ -74,6 +74,7 @@ const CATALOG: Record<SemanticMetric, Entry> = {
     dimensions: ['profile', 'status_class'],
   },
   overheadMs: { name: 'claw_master.proxy.overhead', statistic: 'AVG', dimensions: ['profile'] },
+  quotaBand: { name: 'claw_master.quota.band', statistic: 'MAX', dimensions: ['profile'] },
   weeklyUsed: {
     name: 'claw_master.quota.used_fraction',
     statistic: 'MAX',

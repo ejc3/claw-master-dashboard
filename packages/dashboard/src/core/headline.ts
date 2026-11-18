@@ -59,13 +59,14 @@ function acceptedRecently(profile: ProfileStatus, now: EpochMs): boolean {
 
 /** Null when the subscription can take work. */
 export function blocked(profile: ProfileStatus, now: EpochMs): Blocked | null {
-  if (profile.band === 'unknown') return { reason: 'no-reading', until: null }
   if (profile.tokenExpiresAt !== null && profile.tokenExpiresAt <= now) {
     return { reason: 'login-expired', until: null }
   }
   if (profile.rateLimitedUntil !== null && profile.rateLimitedUntil > now) {
     return { reason: 'rate-limited', until: profile.rateLimitedUntil }
   }
+  if (profile.band === 'unknown' || profile.weekly.usedFraction === null)
+    return { reason: 'no-reading', until: null }
   // Back when every used-up window has reset: the later reset, unknown if either is.
   const full = [profile.weekly, fiveHourAt(profile.fiveHour, now)].filter((w): w is QuotaWindow =>
     readFull(w, now),

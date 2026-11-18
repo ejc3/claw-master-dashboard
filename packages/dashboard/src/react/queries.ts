@@ -238,7 +238,7 @@ export function firstQueries(now: EpochMs): SeriesQuery[] {
     chartQuery(now, FIRST_RANGE, { metric: 'requests', groupBy: 'profile' }),
     tokensByProfileQuery(now, FIRST_RANGE),
     chartQuery(now, FIRST_RANGE, { metric: 'errors' }),
-    chartQuery(now, FIRST_RANGE, { metric: 'weeklyUsed', groupBy: 'profile' }),
+    chartQuery(now, FIRST_RANGE, { metric: 'quotaBand', groupBy: 'profile' }),
     chartQuery(now, FIRST_RANGE, { metric: 'backupRequests' }),
     backupOutputQuery(now),
     projectsQuery(now),
@@ -271,7 +271,7 @@ export function tabQueries(now: EpochMs, shown: RangeName): SeriesQuery[] {
         chartQuery(now, rangeName, { metric: 'requests', groupBy: 'profile' }),
         tokensByProfileQuery(now, rangeName),
         chartQuery(now, rangeName, { metric: 'errors' }),
-        chartQuery(now, rangeName, { metric: 'weeklyUsed', groupBy: 'profile' }),
+        chartQuery(now, rangeName, { metric: 'quotaBand', groupBy: 'profile' }),
         ...SPLITS.flatMap((split) => {
           const table = breakdownQueries(range, chart.stepSeconds, split)
           return [

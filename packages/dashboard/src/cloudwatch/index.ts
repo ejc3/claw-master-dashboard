@@ -555,13 +555,16 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         if (reading !== null && reading[0] > asOf) asOf = reading[0]
         return reading
       }
-      // A subscription is whatever reports a weekly used share; the API-key backup and the
-      // 'none' placeholder report latency but no quota, so they are not listed.
-      const profiles: ProfileStatus[] = used
-        .filter((result) => result.points.length > 0)
-        .map((result) => {
-          const profile = result.label
-          const weeklyUsed = at(latest(result))
+      // The proxy emits a band for every installed subscription, including -1 when usage is
+      // unknown. Keep weekly-only reporters too; request-only backup and placeholder labels
+      // never enter the inventory. Both gauges cover only the current snapshot window.
+      const usedBy = byLabel(used)
+      const names = new Set(
+        [...bands, ...used].filter((r) => latest(r) !== null).map((r) => r.label),
+      )
+      const profiles: ProfileStatus[] = [...names]
+        .map((profile) => {
+          const weeklyUsed = at(latest(usedBy.get(profile)))
           const weeklyReset = at(latest(resetsBy.get(profile)))
           const band = at(latest(bandsBy.get(profile)))
           const cooldown = at(latest(cooldownsBy.get(profile)))
