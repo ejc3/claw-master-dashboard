@@ -37,6 +37,10 @@ function page(opts: {
         if (storage === null) throw new Error('blocked')
         storage.set(k, v)
       },
+      removeItem: (k: string) => {
+        if (storage === null) throw new Error('blocked')
+        storage.delete(k)
+      },
     },
     location: { reload },
   }
@@ -52,26 +56,37 @@ describe('restyle, when the stylesheet did not apply', () => {
     }
   })
 
-  it('reloads once, then says so instead of reloading again within a minute', () => {
+  it('reloads once, then says so instead of reloading again, however long each load takes', () => {
     const first = page({ styled: false })
     restyle(first.win)
     expect(first.reload).toHaveBeenCalledTimes(1)
-    // The reload came back unstyled too: no loop.
-    const again = page({ styled: false, storage: first.storage })
-    restyle(again.win)
-    expect(again.reload).not.toHaveBeenCalled()
-    expect(again.prepended).toEqual([
-      { text: "The page's styles did not load. Reload to try again." },
-    ])
-    // A minute later it may try again.
-    vi.useFakeTimers({ now: Date.now() + 61_000 })
+    // The reload came back unstyled too, minutes later: no loop.
+    vi.useFakeTimers({ now: Date.now() + 10 * 60_000 })
     try {
-      const later = page({ styled: false, storage: again.storage })
-      restyle(later.win)
-      expect(later.reload).toHaveBeenCalledTimes(1)
+      const again = page({ styled: false, storage: first.storage })
+      restyle(again.win)
+      expect(again.reload).not.toHaveBeenCalled()
+      expect(again.prepended).toEqual([
+        { text: "The page's styles did not load. Reload to try again." },
+      ])
+      // The viewer's own reload gets one more automatic try.
+      const manual = page({ styled: false, storage: again.storage })
+      restyle(manual.win)
+      expect(manual.reload).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('forgets a try once a page is styled', () => {
+    const first = page({ styled: false })
+    restyle(first.win)
+    restyle(page({ styled: true, storage: first.storage }).win)
+    expect(first.storage?.size).toBe(0)
+    // A later failure gets its own reload.
+    const later = page({ styled: false, storage: first.storage })
+    restyle(later.win)
+    expect(later.reload).toHaveBeenCalledTimes(1)
   })
 
   it('says so without reloading when session storage is unavailable', () => {
