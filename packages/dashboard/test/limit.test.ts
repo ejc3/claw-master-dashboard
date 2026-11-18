@@ -81,6 +81,10 @@ describe("the snapshot's queries", () => {
   it(`run ${SNAPSHOT_QUERIES_AT_ONCE} at a time`, async () => {
     let running = 0
     let most = 0
+    // Every query is held, and answered together once the limit's worth have started (or none has
+    // started for a while, near the end): the peak is the limit's, not how fast a busy machine
+    // signs a request or answers a timer.
+    const held: Array<() => void> = []
     const src = createCloudWatchSource({
       accessKeyId: 'AKIAEXAMPLE',
       secretAccessKey: 'example-secret',
@@ -89,12 +93,25 @@ describe("the snapshot's queries", () => {
       fetch: (async () => {
         running++
         most = Math.max(most, running)
-        await new Promise((resolve) => setTimeout(resolve, 1))
+        await new Promise<void>((resolve) => held.push(resolve))
         running--
         return Response.json({ MetricDataResults: [] })
       }) as unknown as typeof fetch,
     })
-    await src.snapshot()
+    let done = false
+    const snapshot = src.snapshot().finally(() => {
+      done = true
+    })
+    while (!done) {
+      let quiet = 0
+      while (!done && held.length < SNAPSHOT_QUERIES_AT_ONCE && quiet < 200) {
+        const before = held.length
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        quiet = held.length === before ? quiet + 5 : 0
+      }
+      for (const answer of held.splice(0)) answer()
+    }
+    await snapshot
     expect(most).toBe(SNAPSHOT_QUERIES_AT_ONCE)
   })
 })
