@@ -58,6 +58,11 @@ const GOLDEN: Array<[SemanticMetric, Dimension | undefined, string]> = [
   ],
   ['overheadMs', undefined, 'SELECT AVG("claw_master.proxy.overhead") FROM "ClawMaster"'],
   [
+    'quotaBand',
+    'profile',
+    'SELECT MAX("claw_master.quota.band") FROM "ClawMaster" GROUP BY profile',
+  ],
+  [
     'weeklyUsed',
     'profile',
     'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',

@@ -357,7 +357,7 @@ describe('createCloudWatchSource', () => {
     expect(snapshot.asOf).toBe(latest)
     expect(snapshot.sessions).toBe(94)
     expect(snapshot.activeConnections).toBe(55)
-    // Only subscriptions (those with a weekly share), sorted; the backup and 'none' are not listed.
+    // Only subscriptions, sorted; the backup and 'none' are not listed.
     expect(snapshot.profiles.map((p) => p.profile)).toEqual(['alpha', 'bravo'])
     const [alpha, bravo] = snapshot.profiles as [
       (typeof snapshot.profiles)[number],
@@ -451,6 +451,28 @@ describe('createCloudWatchSource', () => {
     expect(email('alpha')).toBe('new@example.com')
     // None reported: null, not a guess.
     expect(email('bravo')).toBeNull()
+  })
+
+  it('includes installed subscriptions without usage, and ignores empty band and request-only series', async () => {
+    const answers = snapshotAnswers()
+    const { src } = source((body, expression) => {
+      if (expression.includes('quota.band'))
+        return {
+          MetricDataResults: [result('charlie', [[t0, -1]]), result('retired', [])],
+          Messages: [],
+        }
+      if (expression.includes('auth.token_expires_in_seconds'))
+        return { MetricDataResults: [result('charlie', [[t0, -60]])], Messages: [] }
+      return answers(body, expression)
+    })
+    const { profiles } = await src.snapshot()
+    expect(profiles.map((p) => p.profile)).toEqual(['alpha', 'bravo', 'charlie'])
+    expect(profiles[2]).toMatchObject({
+      band: 'unknown',
+      weekly: { usedFraction: null, resetsAt: null },
+      fiveHour: null,
+      tokenExpiresAt: t0 - 60_000,
+    })
   })
 
   it("takes the usage poll's 5-hour reading over the response headers' when there is one", async () => {

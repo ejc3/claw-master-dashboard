@@ -21,6 +21,7 @@ const METRICS: readonly SemanticMetric[] = [
   'durationMs',
   'upstreamTtfbMs',
   'overheadMs',
+  'quotaBand',
   'weeklyUsed',
   'fiveHourUsed',
   'weeklyResetsInSeconds',

@@ -94,6 +94,7 @@ export type SemanticMetric =
   | 'durationMs'
   | 'upstreamTtfbMs'
   | 'overheadMs'
+  | 'quotaBand'
   | 'weeklyUsed'
   | 'fiveHourUsed'
   | 'weeklyResetsInSeconds'

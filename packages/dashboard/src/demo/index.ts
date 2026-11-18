@@ -284,12 +284,19 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
         )
         return groupBy !== undefined ? values : [reduce('MAX', values)]
       }
+      case 'quotaBand':
       case 'weeklyUsed':
       case 'weeklyResetsInSeconds':
       case 'tokenExpiresInSeconds': {
         const values = PROFILES.map((p) => {
-          if (metric === 'weeklyUsed' && p.joinedAgoMs !== undefined && m < now - p.joinedAgoMs)
+          if (
+            (metric === 'quotaBand' || metric === 'weeklyUsed') &&
+            p.joinedAgoMs !== undefined &&
+            m < now - p.joinedAgoMs
+          )
             return Number.NaN
+          if (metric === 'quotaBand')
+            return { unknown: -1, ok: 0, reserve: 1, exhausted: 2 }[p.band]
           if (metric === 'weeklyUsed')
             return usedAt(p.weeklyUsed, now + p.weeklyResetsInMs, WEEK_MS, now, m)
           if (metric === 'weeklyResetsInSeconds')

@@ -1,10 +1,10 @@
 import type { EpochMs, Series, SeriesQuery } from './types'
 
-/** How long a subscription still counts after its last weekly reading. */
+/** How long a subscription still counts after its last band reading. */
 export const SUBSCRIPTION_HOLD_MS = 60 * 60_000
 
 /**
- * How many subscriptions were in the pool at each step of `query`'s grid, from their weekly
+ * How many subscriptions were in the pool at each step of `query`'s grid, from their quota band
  * readings as the source returned them (not zero-filled; one point per bucket, at the bucket's
  * start): one counts in a step when it has a finite reading in that step or in a bucket that
  * ended within SUBSCRIPTION_HOLD_MS before it, so a missed export or the step CloudWatch has not

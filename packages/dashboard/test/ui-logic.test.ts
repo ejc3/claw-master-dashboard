@@ -80,6 +80,20 @@ describe('wire format', () => {
 })
 
 describe('headline', () => {
+  it('names an expired login even when the usage poll cannot read its limits', () => {
+    const missing = profile('a', { band: 'unknown', tokenExpiresAt: NOW - 1 })
+    expect(blocked(missing, NOW)?.reason).toBe('login-expired')
+    expect(hasHeadroom(missing, NOW)).toBe(false)
+    const unread = { ...missing, tokenExpiresAt: null }
+    expect(blocked(unread, NOW)?.reason).toBe('no-reading')
+    expect(blocked({ ...unread, rateLimitedUntil: NOW + HOUR_MS }, NOW)?.reason).toBe(
+      'rate-limited',
+    )
+    expect(
+      hasHeadroom(profile('a', { weekly: { ...unread.weekly, usedFraction: null } }), NOW),
+    ).toBe(false)
+  })
+
   it('counts only a subscription Anthropic is refusing as out, not one the poll calls used up', () => {
     expect(hasHeadroom(profile('a'), NOW)).toBe(true)
     // The poll reads whole percents: its 100% can still be under Anthropic's, which keeps taking work.
