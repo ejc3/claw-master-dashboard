@@ -4,6 +4,7 @@ import './globals.css'
 import type { Metadata, Viewport } from 'next'
 import { Rubik } from 'next/font/google'
 import type { ReactNode } from 'react'
+import { RESTYLE_SCRIPT } from '@/lib/restyle'
 
 const sans = Rubik({
   subsets: ['latin'],
@@ -27,7 +28,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={sans.variable}>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Reloads once if the stylesheet did not apply (lib/restyle.ts). */}
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: our own constant script */}
+        <script dangerouslySetInnerHTML={{ __html: RESTYLE_SCRIPT }} />
+      </body>
     </html>
   )
 }
