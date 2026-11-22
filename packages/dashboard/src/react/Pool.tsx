@@ -16,7 +16,6 @@ import {
   COVERAGE_TARGET,
   calendarIcs,
   type EpochMs,
-  FABLE_SHARE_OF_WEEK,
   fableAt,
   fableLeft,
   fableSummary,
@@ -82,13 +81,10 @@ const share = (f: number | null | undefined) =>
  */
 function LeftBar(props: {
   used: number | null
-  window: WindowKind
+  window: WindowKind | 'fable'
   color: string
-  /**
-   * The weekly bar's Fable line: how much of the week Fable could still use, as a share of the week
-   * (the Fable allowance left, never more than the week leaves). Absent: no line.
-   */
-  fable?: number | null
+  /** The bar stands for a limit the subscription does not have: drawn, but dimmed. */
+  dim?: boolean
 }) {
   const { used } = props
   const level = used === null ? 'unknown' : used >= 1 ? 'full' : used >= 0.9 ? 'high' : 'ok'
@@ -98,15 +94,10 @@ function LeftBar(props: {
       className="cmd-account-bar"
       data-window={props.window}
       data-level={level}
+      data-dim={props.dim || undefined}
       style={{ '--cmd-account-fill': props.color } as CSSProperties}
     >
       {left !== null && left > 0 && <span style={{ height: `${Math.round(left * 1000) / 10}%` }} />}
-      {props.fable != null && (
-        <i
-          className="cmd-fable-mark"
-          style={{ bottom: `${Math.round(Math.min(1, Math.max(0, props.fable)) * 1000) / 10}%` }}
-        />
-      )}
     </span>
   )
 }
@@ -388,19 +379,20 @@ export function PoolAccounts(props: {
                 }}
               >
                 <span className="cmd-account-bars" aria-hidden="true">
-                  {/* The week, with a line where Fable's share of it ends (Fable left, in the week's units);
-                      no line on a used-up week, where there is nothing to mark. */}
+                  <LeftBar used={weekly} window="weekly" color={colors.get(p.profile) ?? ''} />
+                  {/* No 5-hour limit: what limits the next five hours is the week, drawn dimmed. */}
                   <LeftBar
-                    used={weekly}
-                    window="weekly"
+                    used={five === null && noFiveHourLimit(p) ? weekly : five}
+                    window="fiveHour"
                     color={colors.get(p.profile) ?? ''}
-                    {...(fable === undefined || weekly === null || weekly >= 1
-                      ? {}
-                      : { fable: fable === null ? null : fable * FABLE_SHARE_OF_WEEK })}
+                    dim={five === null && noFiveHourLimit(p)}
                   />
-                  {/* No 5-hour limit, no 5-hour bar: the week is what limits the next five hours. */}
-                  {!noFiveHourLimit(p) && (
-                    <LeftBar used={five} window="fiveHour" color={colors.get(p.profile) ?? ''} />
+                  {fable !== undefined && (
+                    <LeftBar
+                      used={fable === null ? null : 1 - fable}
+                      window="fable"
+                      color={colors.get(p.profile) ?? ''}
+                    />
                   )}
                 </span>
                 <span className="cmd-account-name">{names.get(p.profile)}</span>
@@ -423,9 +415,9 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        {`Bars: week${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''}${
-          props.profiles.some((p) => !noFiveHourLimit(p)) ? ', 5h' : ''
-        } left`}
+        {props.profiles.some((p) => p.fable != null)
+          ? 'Bars: week, 5h, Fable left'
+          : 'Bars: week, 5h left'}
       </p>
       {shown !== null && (
         <div id="cmd-account-detail" className="cmd-account-detail" role="status">

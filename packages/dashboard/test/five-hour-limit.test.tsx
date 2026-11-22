@@ -75,7 +75,7 @@ describe('a subscription with no 5-hour limit', () => {
 })
 
 describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
-  it('is not drawn; one with a 5-hour window keeps it', () => {
+  it("shows the week's room, dimmed; one with a 5-hour window is not dimmed", () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -95,14 +95,13 @@ describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
         />,
       ),
     )
-    const bars = (name: string) =>
-      [
-        ...([...container.querySelectorAll('.cmd-account')]
-          .find((e) => e.querySelector('.cmd-account-name')?.textContent === name)
-          ?.querySelectorAll('.cmd-account-bar') ?? []),
-      ].map((b) => b.getAttribute('data-window'))
-    expect(bars('ultra')).toEqual(['weekly'])
-    expect(bars('max')).toEqual(['weekly', 'fiveHour'])
-    expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe('Bars: week, 5h left')
+    const bar = (name: string) =>
+      [...container.querySelectorAll('.cmd-account')]
+        .find((e) => e.querySelector('.cmd-account-name')?.textContent === name)
+        ?.querySelector('[data-window="fiveHour"]') as HTMLElement
+    expect(bar('ultra').hasAttribute('data-dim')).toBe(true)
+    expect((bar('ultra').firstElementChild as HTMLElement).style.height).toBe('75%')
+    expect(bar('max').hasAttribute('data-dim')).toBe(false)
+    expect((bar('max').firstElementChild as HTMLElement).style.height).toBe('50%')
   })
 })

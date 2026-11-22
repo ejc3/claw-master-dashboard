@@ -151,7 +151,7 @@ describe('the Fable allowance on the page', () => {
     sub('team-charlie', null),
   ]
 
-  it("draws Fable as a line on the week's bar, says it, and details it", () => {
+  it('gives a seat with Fable a third bar, says it, and details it', () => {
     const container = mount(<PoolAccounts profiles={profiles} now={NOW} />)
     const row = (name: string) =>
       [...container.querySelectorAll('.cmd-account')].find(
@@ -159,19 +159,14 @@ describe('the Fable allowance on the page', () => {
       ) as Element
     const bars = (name: string) =>
       [...row(name).querySelectorAll('.cmd-account-bar')].map((b) => b.getAttribute('data-window'))
-    const mark = (name: string) =>
-      (row(name).querySelector('.cmd-fable-mark') as HTMLElement | null)?.style.bottom ?? null
-    // No 5-hour limit on these seats, so no 5-hour bar; Fable is a line on the week's bar.
-    expect(bars('alpha')).toEqual(['weekly'])
-    // 75% of the allowance left, which is half the week: the line at 37.5% of the week.
-    expect(mark('alpha')).toBe('37.5%')
-    // Refused Fable: the line at the bottom. A seat without Fable has no line.
-    expect(mark('bravo')).toBe('0%')
-    expect(mark('charlie')).toBeNull()
-
+    expect(bars('alpha')).toEqual(['weekly', 'fiveHour', 'fable'])
+    expect(bars('charlie')).toEqual(['weekly', 'fiveHour'])
+    expect(row('bravo').querySelector('[data-window="fable"]')?.getAttribute('data-level')).toBe(
+      'full',
+    )
     expect(row('alpha').textContent).toContain('Fable 75% left')
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe(
-      'Bars: week (line: Fable) left',
+      'Bars: week, 5h, Fable left',
     )
 
     act(() => (row('bravo').querySelector('button') as HTMLButtonElement).click())
@@ -182,18 +177,6 @@ describe('the Fable allowance on the page', () => {
     )
   })
 
-  it('draws no Fable line on a week that is used up', () => {
-    const container = mount(
-      <PoolAccounts
-        profiles={[
-          sub('team-golf', { usedFraction: 0.1, resetsAt: NOW + HOUR_MS, refusedUntil: null }, 1),
-        ]}
-        now={NOW}
-      />,
-    )
-    expect(container.querySelector('.cmd-fable-mark')).toBeNull()
-  })
-
   it('details a Fable allowance whose reset has passed as a new week, as the bar shows it', () => {
     const container = mount(
       <PoolAccounts
@@ -201,7 +184,7 @@ describe('the Fable allowance on the page', () => {
         now={NOW}
       />,
     )
-    expect((container.querySelector('.cmd-fable-mark') as HTMLElement).style.bottom).toBe('50%')
+    expect(container.querySelector('[data-window="fable"]')?.getAttribute('data-level')).toBe('ok')
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
     expect(detail).toContain('Fable 100% left')
@@ -229,11 +212,9 @@ describe('the Fable allowance on the page', () => {
   })
 
   it('keeps the old legend when no subscription has Fable', () => {
-    const withFive = sub('team-charlie', null)
-    withFive.fiveHour = { usedFraction: 0.2, resetsAt: NOW + HOUR_MS, lengthMs: 5 * HOUR_MS }
-    const container = mount(<PoolAccounts profiles={[withFive]} now={NOW} />)
+    const container = mount(<PoolAccounts profiles={[sub('team-charlie', null)]} now={NOW} />)
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe('Bars: week, 5h left')
-    expect(container.querySelector('.cmd-fable-mark')).toBeNull()
+    expect(container.querySelector('[data-window="fable"]')).toBeNull()
   })
 
   it('says in the banner how much Fable the pool has', () => {

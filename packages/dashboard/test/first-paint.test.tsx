@@ -757,15 +757,25 @@ describe('the account bars', () => {
     )
     const levels = (e: Element) =>
       [...e.querySelectorAll('.cmd-account-bar')].map((b) => b.getAttribute('data-level'))
-    // The 5-hour bar shows what the window really leaves: no more than delta's week although its
-    // window has reset. bravo and charlie report no 5-hour window (no 5-hour limit): no 5-hour bar.
-    expect(items.map(levels)).toEqual([['ok', 'high'], ['full'], ['ok'], ['ok', 'ok']])
+    // The 5-hour bar shows what the window really leaves: nothing for bravo (its week is used up)
+    // or charlie (refused), and no more than delta's week although its window has reset.
+    expect(items.map(levels)).toEqual([
+      ['ok', 'high'],
+      ['full', 'full'],
+      ['ok', 'full'],
+      ['ok', 'ok'],
+    ])
     // Each bar fills with what is left, like the charts: a used-up window is an empty bar.
     const fills = (e: Element) =>
       [...e.querySelectorAll('.cmd-account-bar')].map(
         (b) => (b.querySelector('span') as HTMLElement | null)?.style.height ?? 'empty',
       )
-    expect(items.map(fills)).toEqual([['48%', '4%'], ['empty'], ['73%'], ['60%', '60%']])
+    expect(items.map(fills)).toEqual([
+      ['48%', '4%'],
+      ['empty', 'empty'],
+      ['73%', 'empty'],
+      ['60%', '60%'],
+    ])
     // Read out in full for a screen reader.
     expect(items[0]?.textContent).toContain('alpha: week 48% left, 5-hour 4.0% left')
     expect(items[1]?.textContent).toContain('bravo: week 0% left, 5-hour 0% left')
