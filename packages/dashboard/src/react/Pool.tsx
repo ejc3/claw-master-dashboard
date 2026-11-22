@@ -80,9 +80,10 @@ const levelOf = (used: number | null) =>
   used === null ? 'unknown' : used >= 1 ? 'full' : used >= 0.9 ? 'high' : 'ok'
 
 /**
- * One subscription's week as a horizontal bar of what is left, in its own color, and along its bottom
- * edge a darker strip: how much of the week Fable could still use, on the same axis, so never longer
- * than the week (Fable may use at most FABLE_SHARE_OF_WEEK of it). Dashed when there is no reading.
+ * One subscription's week as a horizontal bar of what is left, in its own color, and across it a
+ * vertical line where Fable's reach ends: how much of the week Fable could still use, on the same axis,
+ * so never past the week's fill (Fable may use at most FABLE_SHARE_OF_WEEK of it). Dashed when there
+ * is no reading; no line when the week is used up.
  */
 function WeekMeter(props: {
   used: number | null
@@ -108,7 +109,8 @@ function WeekMeter(props: {
           data-window="fable"
           data-level={levelOf(props.fable === null ? null : 1 - props.fable)}
           data-left={pct(fable)}
-          style={{ width: pct(fable) }}
+          hidden={props.fable === null || left <= 0}
+          style={{ left: pct(fable) }}
         />
       )}
     </span>
@@ -460,7 +462,7 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (dark edge: Fable)' : ''} · ring: 5 hours`}
+        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''} · ring: 5 hours`}
       </p>
       {shown !== null && (
         <div id="cmd-account-detail" className="cmd-account-detail" role="status">

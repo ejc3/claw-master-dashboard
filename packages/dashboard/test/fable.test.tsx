@@ -166,7 +166,7 @@ describe('the Fable allowance on the page', () => {
     )
     expect(row('alpha').textContent).toContain('Fable 75% left')
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe(
-      'Bar: week left (dark edge: Fable) · ring: 5 hours',
+      'Bar: week left (line: Fable) · ring: 5 hours',
     )
 
     act(() => (row('bravo').querySelector('button') as HTMLButtonElement).click())

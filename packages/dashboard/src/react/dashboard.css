@@ -458,7 +458,6 @@
     height: 10px;
     border-radius: 5px;
     background: var(--cmd-track);
-    overflow: hidden;
   }
 
   .cmd-meter-week {
@@ -468,14 +467,19 @@
     background: var(--cmd-account-fill, var(--cmd-fill));
   }
 
-  /* Fable's share of the week: a darker strip along the bottom edge. */
+  /* Where Fable's reach ends on the week: a vertical line standing a little proud of the bar. */
   .cmd-meter-fable {
     position: absolute;
-    left: 0;
-    bottom: 0;
-    height: 4px;
-    border-radius: 0 0 0 5px;
-    background: color-mix(in srgb, var(--cmd-account-fill, var(--cmd-fill)) 50%, var(--cmd-ink));
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: var(--cmd-ink);
+  }
+
+  .cmd-meter-fable[hidden] {
+    display: none;
   }
 
   .cmd-meter[data-level="unknown"] {
