@@ -4,6 +4,8 @@ import { after } from 'next/server'
 import type { ReactNode } from 'react'
 import {
   BadQueryError,
+  CALENDAR_TITLE_MAX,
+  calendarIcs,
   inTurn,
   type MetricsSource,
   type Series,
@@ -69,6 +71,8 @@ export function createDashboardHandler(config: DashboardHandlerConfig): {
       if (endpoint === 'series') {
         return json(await config.source().series(seriesQueryFromParams(url.searchParams)))
       }
+      // A reset as a calendar file, which a phone's calendar opens (a data: link does nothing on iOS).
+      if (endpoint === 'reset.ics') return calendarResponse(url.searchParams)
       return json({ error: 'Not found.' }, 404)
     } catch (error) {
       if (error instanceof BadQueryError || error instanceof UnsupportedQueryError) {
@@ -88,6 +92,31 @@ export function createDashboardHandler(config: DashboardHandlerConfig): {
     }
   }
   return { GET }
+}
+
+/** How far ahead a reminder may be: past any weekly reset. */
+const CALENDAR_AHEAD_MS = 30 * 24 * 60 * 60_000
+
+/** `…/reset.ics?title=…&at=<epoch ms>`: a 15-minute event at `at`; 400 for a title or time out of bounds. */
+export function calendarResponse(params: URLSearchParams): Response {
+  const title = params.get('title') ?? ''
+  const raw = params.get('at') ?? ''
+  const at = /^\d{1,16}$/.test(raw) ? Number(raw) : Number.NaN
+  const now = Date.now()
+  if (
+    title.length === 0 ||
+    title.length > CALENDAR_TITLE_MAX ||
+    !(at > now - CALENDAR_AHEAD_MS && at < now + CALENDAR_AHEAD_MS)
+  ) {
+    return json({ error: 'A reminder needs a title and a time within a month.' }, 400)
+  }
+  return new Response(calendarIcs(title, at), {
+    headers: {
+      'content-type': 'text/calendar; charset=utf-8',
+      'content-disposition': 'inline; filename="reset.ics"',
+      'cache-control': 'private, no-store',
+    },
+  })
 }
 
 export interface DashboardPageProps {

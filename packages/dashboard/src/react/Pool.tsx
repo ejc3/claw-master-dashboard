@@ -1,10 +1,20 @@
 'use client'
 
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   blocked,
   type CapacityAdvice,
   COVERAGE_TARGET,
+  calendarIcs,
   type EpochMs,
   fableAt,
   fableLeft,
@@ -158,27 +168,16 @@ function Sparkle(props: { color: string }) {
  * An iCalendar file for one moment, as a link a phone's calendar opens: a reminder at a reset.
  * Times are UTC, so it lands right in any zone.
  */
-export function calendarHref(title: string, at: EpochMs): string {
-  const stamp = (t: EpochMs) =>
-    new Date(t)
-      .toISOString()
-      .replace(/[-:]/g, '')
-      .replace(/\.\d{3}/, '')
-  const ics = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//claw-master//dashboard//EN',
-    'BEGIN:VEVENT',
-    `UID:${at}-${title.replace(/[^A-Za-z0-9]/g, '')}@claw-master`,
-    `DTSTAMP:${stamp(at)}`,
-    `DTSTART:${stamp(at)}`,
-    `DTEND:${stamp(at + 15 * 60_000)}`,
-    `SUMMARY:${title.replace(/[\\;,\n]/g, ' ')}`,
-    'END:VEVENT',
-    'END:VCALENDAR',
-  ].join('\r\n')
-  return `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`
+export function calendarHref(title: string, at: EpochMs, base = ''): string {
+  if (base !== '') return `${base}/reset.ics?${new URLSearchParams({ title, at: String(at) })}`
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(calendarIcs(title, at))}`
 }
+
+/**
+ * Where the dashboard API is mounted, for calendar links (…/reset.ics): a real file opens in a phone's
+ * calendar, where Safari on iOS ignores a data: link. Empty: a data: link, for a page without the API.
+ */
+export const CalendarBaseContext = createContext('')
 
 /** One window of the detail: its use, and when it resets with a link to add that to a calendar. */
 function WindowDetail(props: {
@@ -188,9 +187,12 @@ function WindowDetail(props: {
   closed?: boolean
   /** What to say with no window at all; "no reading" unless given. */
   none?: string
+  /** Said instead of the reset time, when it is another line's (Fable resets with the week). */
+  resetsWith?: string
   now: EpochMs
 }) {
   const when = useWhen()
+  const calendarBase = useContext(CalendarBaseContext)
   const { window: w, now } = props
   if (w === null) return <li>{props.none ?? `${props.name}: no reading`}</li>
   if (props.closed) return <li>{props.name}: not in use</li>
@@ -199,14 +201,22 @@ function WindowDetail(props: {
   return (
     <li>
       {props.name} {formatPercent(used)} used
-      {resets === null ? (
+      {resets !== null && props.resetsWith !== undefined ? (
+        ` · resets ${props.resetsWith}`
+      ) : resets === null ? (
         ' · reset time unknown'
       ) : (
         <>
           {' · resets '}
           <a
-            href={calendarHref(`${props.who}: ${props.name.toLowerCase()} limit resets`, resets)}
-            download={`${props.who}-${props.name.toLowerCase()}-reset.ics`}
+            href={calendarHref(
+              `${props.who}: ${props.name.toLowerCase()} limit resets`,
+              resets,
+              calendarBase,
+            )}
+            {...(calendarBase === ''
+              ? { download: `${props.who}-${props.name.toLowerCase()}-reset.ics` }
+              : {})}
             title="Add to calendar"
           >
             {when === null ? `in ${formatCountdown(resets - now)}` : when(resets, now)}
@@ -216,6 +226,11 @@ function WindowDetail(props: {
       )}
     </li>
   )
+}
+
+/** Two reset times read a minute apart or less are one reset (the poll and headers round apart). */
+function sameMoment(a: EpochMs | null, b: EpochMs | null): boolean {
+  return a !== null && b !== null && Math.abs(a - b) <= 60_000
 }
 
 /** Whether a subscription can take work, or until when it cannot, in words. */
@@ -420,6 +435,9 @@ export function PoolAccounts(props: {
                 name="Fable"
                 who={shown.profile}
                 window={fableAt(shown.fable, props.now)}
+                {...(sameMoment(shown.fable.resetsAt, shown.weekly.resetsAt)
+                  ? { resetsWith: 'with the week' }
+                  : {})}
                 now={props.now}
               />
             )}

@@ -7,6 +7,7 @@ export {
   MAX_ADDED,
   PURCHASE_STEP_MS,
 } from './advice'
+export { CALENDAR_TITLE_MAX, calendarIcs } from './calendar'
 export {
   groupableBy,
   insightsQuery,

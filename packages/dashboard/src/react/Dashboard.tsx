@@ -54,7 +54,7 @@ import {
   useSnapshot,
 } from './hooks'
 import { type ChartSeries, foldSeries, LineChart, seriesColors } from './LineChart'
-import { accountColors, PoolOutlook } from './Pool'
+import { accountColors, CalendarBaseContext, PoolOutlook } from './Pool'
 import type { PollFailure } from './poller'
 import {
   createPollStore,
@@ -154,7 +154,9 @@ export function Dashboard(props: DashboardProps) {
   return (
     <FirstPaintContext.Provider value={firstPaint}>
       <PollStoreContext.Provider value={pollStore}>
-        <DashboardBody {...props} />
+        <CalendarBaseContext.Provider value={props.apiBase}>
+          <DashboardBody {...props} />
+        </CalendarBaseContext.Provider>
       </PollStoreContext.Provider>
     </FirstPaintContext.Provider>
   )
