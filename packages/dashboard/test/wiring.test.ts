@@ -86,11 +86,10 @@ describe('Token wiring', () => {
     expect(source).toMatch(/No token counts for this range yet; showing requests\./)
   })
 
-  it('keeps models on requests, and shows a failed token query as an error', () => {
-    expect(queries).toMatch(/dimension: 'model',\s+label: 'Models'.*tokens: false/s)
+  it('counts models in tokens with requests to fall back on, and shows a failed token query as an error', () => {
+    expect(queries).toMatch(/dimension: 'model',[^}]*tokens: true,\s+requests: true/s)
     // Projects count tokens only: no requests fallback to ask for.
     expect(queries).toMatch(/dimension: 'project',[^}]*tokens: true,\s+requests: false/s)
-    expect(breakdown).toMatch(/does not count tokens by model; this view counts requests/)
     expect(breakdown).toMatch(/tokensPending \|\| tokenError !== null \? \[\] : requestRows/)
     // The title names the range the token totals cover.
     expect(breakdown).toMatch(/\{tableRangeWords\(\s*showTokens \? coverage : null,/)

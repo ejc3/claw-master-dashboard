@@ -46,8 +46,8 @@ describe('tokens in the catalog', () => {
     )
   })
 
-  it('has no token split by model, and no token type on another metric', () => {
-    expect(() => resolveMetric('tokens', 'model')).toThrow(UnsupportedQueryError)
+  it('splits tokens by model, and puts no token type on another metric', () => {
+    expect(resolveMetric('tokens', 'model').name).toBe('claw_master.inference.tokens.by_model')
     expect(() => resolveMetric('requests', 'profile', 'input')).toThrow(UnsupportedQueryError)
   })
 })
@@ -392,10 +392,10 @@ describe("the page's token queries", () => {
       if (q.metric === 'tokens' && q.groupBy !== 'type') expect(q.byType, queryKey(q)).toBe(true)
     }
     // Each asked once: per range, requests, tokens, errors and weekly use by subscription, then
-    // the table's splits (requests and tokens by person and machine, tokens by project, requests
-    // by model; by subscription is the chart's own).
+    // the table's splits (requests and tokens by person, machine and model, tokens by project; by
+    // subscription is the chart's own).
     expect(new Set(tabs.map(queryKey)).size).toBe(tabs.length)
-    expect(tabs).toHaveLength(20)
+    expect(tabs).toHaveLength(22)
     expect(new Set(first.map(queryKey)).size).toBe(first.length)
   })
 })

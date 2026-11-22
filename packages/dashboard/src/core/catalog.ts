@@ -113,6 +113,8 @@ const CATALOG: Record<SemanticMetric, Entry> = {
       client: 'claw_master.inference.tokens.by_client',
       // The project a launch was started in (claude-master releases that count it).
       project: 'claw_master.inference.tokens.by_project',
+      // The request's model (claw-master releases that count it).
+      model: 'claw_master.inference.tokens.by_model',
     },
   },
 }

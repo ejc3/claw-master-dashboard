@@ -88,7 +88,7 @@ export const SPLITS: ReadonlyArray<{
     noun: 'model',
     column: 'Model',
     shortColumn: 'Model',
-    tokens: false,
+    tokens: true,
     requests: true,
   },
 ]
