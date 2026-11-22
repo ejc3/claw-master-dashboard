@@ -90,9 +90,7 @@ function LeftBar(props: { used: number | null; window: WindowKind | 'fable'; col
       data-level={level}
       style={{ '--cmd-account-fill': props.color } as CSSProperties}
     >
-      {left !== null && left > 0 && (
-        <span className="cmd-account-fill" style={{ height: `${Math.round(left * 1000) / 10}%` }} />
-      )}
+      {left !== null && left > 0 && <span style={{ height: `${Math.round(left * 1000) / 10}%` }} />}
     </span>
   )
 }
@@ -378,16 +376,9 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        Bars: <span className="cmd-bar-key" data-window="weekly" />
-        week, <span className="cmd-bar-key" data-window="fiveHour" />
-        5h
-        {props.profiles.some((p) => p.fable != null) && (
-          <>
-            , <span className="cmd-bar-key" data-window="fable" />
-            Fable
-          </>
-        )}{' '}
-        left
+        {props.profiles.some((p) => p.fable != null)
+          ? 'Bars: week, 5h, Fable left'
+          : 'Bars: week, 5h left'}
       </p>
       {shown !== null && (
         <div id="cmd-account-detail" className="cmd-account-detail" role="status">
