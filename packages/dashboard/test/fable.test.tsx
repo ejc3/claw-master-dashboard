@@ -151,22 +151,22 @@ describe('the Fable allowance on the page', () => {
     sub('team-charlie', null),
   ]
 
-  it('gives a seat with Fable a third bar, says it, and details it', () => {
+  it('gives a seat with Fable a Fable line on its week bar, says it, and details it', () => {
     const container = mount(<PoolAccounts profiles={profiles} now={NOW} />)
     const row = (name: string) =>
       [...container.querySelectorAll('.cmd-account')].find(
         (e) => e.querySelector('.cmd-account-name')?.textContent === name,
       ) as Element
     const bars = (name: string) =>
-      [...row(name).querySelectorAll('.cmd-account-bar')].map((b) => b.getAttribute('data-window'))
-    expect(bars('alpha')).toEqual(['weekly', 'fiveHour', 'fable'])
+      [...row(name).querySelectorAll('[data-window]')].map((b) => b.getAttribute('data-window'))
+    expect(bars('alpha')).toEqual(['weekly', 'fable', 'fiveHour'])
     expect(bars('charlie')).toEqual(['weekly', 'fiveHour'])
     expect(row('bravo').querySelector('[data-window="fable"]')?.getAttribute('data-level')).toBe(
       'full',
     )
     expect(row('alpha').textContent).toContain('Fable 75% left')
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe(
-      'Bars: week, 5h, Fable left',
+      'Bar: week left (line: Fable) · ring: 5 hours left',
     )
 
     act(() => (row('bravo').querySelector('button') as HTMLButtonElement).click())
@@ -205,15 +205,66 @@ describe('the Fable allowance on the page', () => {
         now={NOW}
       />,
     )
+    // On the bar, Fable's line is drawn in the week's units: never past what the week leaves.
+    const left = (w: string) =>
+      container.querySelector(`[data-window="${w}"]`)?.getAttribute('data-left')
+    expect([left('weekly'), left('fable')]).toEqual(['10%', '10%'])
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
       'Fable 20% left (all the week leaves; its own allowance has 75% left) · resets with the week',
     )
   })
 
+  it("draws Fable's line at its share of the week: half the allowance left, in the week's units", () => {
+    // 80% of the week left; half the Fable allowance left is a quarter of the week, inside the fill.
+    const container = mount(
+      <PoolAccounts
+        profiles={[
+          sub(
+            'team-foxtrot',
+            { usedFraction: 0.5, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+            0.2,
+          ),
+          sub('team-golf', null, 0.2),
+        ]}
+        now={NOW}
+      />,
+    )
+    const line = container.querySelector<HTMLElement>('.cmd-meter-fable')
+    expect(line?.getAttribute('data-left')).toBe('25%')
+    expect(line?.style.left).toBe('25%')
+    expect(line?.hidden).toBe(false)
+    expect(container.querySelectorAll('.cmd-meter-fable')).toHaveLength(1)
+    // A used-up allowance puts the line at the bar's start; a used-up week hides it.
+    const out = mount(
+      <PoolAccounts
+        profiles={[
+          sub(
+            'team-hotel',
+            { usedFraction: 1, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+            0.2,
+          ),
+          sub(
+            'team-india',
+            { usedFraction: 0.1, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+            1,
+          ),
+        ]}
+        now={NOW}
+      />,
+    )
+    const lines = [...out.querySelectorAll<HTMLElement>('.cmd-meter-fable')]
+    expect(lines.map((l) => [l.style.left, l.hidden])).toEqual([
+      ['0%', false],
+      ['0%', true],
+    ])
+  })
+
   it('keeps the old legend when no subscription has Fable', () => {
     const container = mount(<PoolAccounts profiles={[sub('team-charlie', null)]} now={NOW} />)
-    expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe('Bars: week, 5h left')
+    expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe(
+      'Bar: week left · ring: 5 hours left',
+    )
     expect(container.querySelector('[data-window="fable"]')).toBeNull()
   })
 

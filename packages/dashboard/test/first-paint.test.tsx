@@ -753,11 +753,11 @@ describe('the account bars', () => {
     // No key among the bars: one line under them says which is which.
     expect(container.querySelector('.cmd-accounts-key')).toBeNull()
     expect(container.querySelector('.cmd-accounts-legend')?.textContent?.trim()).toBe(
-      'Bars: week, 5h left',
+      'Bar: week left · ring: 5 hours left',
     )
     const levels = (e: Element) =>
-      [...e.querySelectorAll('.cmd-account-bar')].map((b) => b.getAttribute('data-level'))
-    // The 5-hour bar shows what the window really leaves: nothing for bravo (its week is used up)
+      [...e.querySelectorAll('[data-window]')].map((b) => b.getAttribute('data-level'))
+    // The 5-hour ring shows what the window really leaves: nothing for bravo (its week is used up)
     // or charlie (refused), and no more than delta's week although its window has reset.
     expect(items.map(levels)).toEqual([
       ['ok', 'high'],
@@ -765,17 +765,28 @@ describe('the account bars', () => {
       ['ok', 'full'],
       ['ok', 'ok'],
     ])
-    // Each bar fills with what is left, like the charts: a used-up window is an empty bar.
+    // Each mark fills with what is left, like the charts: a used-up window is empty.
     const fills = (e: Element) =>
-      [...e.querySelectorAll('.cmd-account-bar')].map(
-        (b) => (b.querySelector('span') as HTMLElement | null)?.style.height ?? 'empty',
-      )
+      [...e.querySelectorAll('[data-window]')].map((b) => b.getAttribute('data-left'))
     expect(items.map(fills)).toEqual([
       ['48%', '4%'],
-      ['empty', 'empty'],
-      ['73%', 'empty'],
+      ['0%', '0%'],
+      ['73%', '0%'],
       ['60%', '60%'],
     ])
+    // The bar draws the week's fill at that width; a used-up week draws none.
+    expect((items[0]?.querySelector('.cmd-meter-week') as HTMLElement | null)?.style.width).toBe(
+      '48%',
+    )
+    expect(items[1]?.querySelector('.cmd-meter-week')).toBeNull()
+    // The ring draws that arc from 12 o'clock, clockwise: alpha's 4% of a circle of radius 7; none for
+    // a window with nothing left.
+    const arc = (e: Element | undefined) => e?.querySelector('.cmd-ring-left')
+    expect(arc(items[0])?.getAttribute('stroke-dasharray')).toBe(
+      `${(0.04 * 2 * Math.PI * 7).toFixed(2)} ${(2 * Math.PI * 7).toFixed(2)}`,
+    )
+    expect(arc(items[0])?.getAttribute('transform')).toBe('rotate(-90 10 10)')
+    expect(arc(items[1])).toBeNull()
     // Read out in full for a screen reader.
     expect(items[0]?.textContent).toContain('alpha: week 48% left, 5-hour 4.0% left')
     expect(items[1]?.textContent).toContain('bravo: week 0% left, 5-hour 0% left')
@@ -1624,7 +1635,11 @@ describe('account colors', () => {
     const colors = new Map([['claude-a', 'var(--cmd-series-3)']])
     const bars = document.createElement('div')
     bars.innerHTML = renderToString(<PoolAccounts profiles={[status]} now={NOW} colors={colors} />)
-    for (const bar of bars.querySelectorAll<HTMLElement>('.cmd-account .cmd-account-bar')) {
+    const marks = bars.querySelectorAll<HTMLElement>(
+      '.cmd-account .cmd-meter, .cmd-account .cmd-ring',
+    )
+    expect(marks.length).toBe(2)
+    for (const bar of marks) {
       expect(bar.style.getPropertyValue('--cmd-account-fill')).toBe('var(--cmd-series-3)')
     }
     const row = document.createElement('div')
