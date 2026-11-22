@@ -40,6 +40,11 @@ export const SPLITS: ReadonlyArray<{
   tokens: boolean
   /** claude-master counts requests by this split too, the table's fallback; not by project. */
   requests: boolean
+  /**
+   * Tokens only once their counts cover the whole range; requests until then. For a split whose
+   * token counts are new (models), where tokens from partway through would read as the whole story.
+   */
+  tokensOnceFull?: boolean
 }> = [
   {
     dimension: 'client_account',
@@ -90,6 +95,7 @@ export const SPLITS: ReadonlyArray<{
     shortColumn: 'Model',
     tokens: true,
     requests: true,
+    tokensOnceFull: true,
   },
 ]
 
