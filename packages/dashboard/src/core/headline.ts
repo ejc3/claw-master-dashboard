@@ -221,8 +221,10 @@ export function fableLeft(profile: ProfileStatus, now: EpochMs): number | null {
 
 /**
  * The pool's Fable at a glance: how many subscriptions have a Fable allowance, how many can take
- * Fable now (available, with Fable left), and the share left across those with a reading. Null
- * when none reports Fable.
+ * Fable now (available, with Fable left after the week's cap), and how much of the Fable allowance
+ * itself is left across those with a reading: nothing of one Anthropic refuses Fable, all of one
+ * past its reset. The week does not count against that share (the 'can take it' count says which
+ * can use it now), so a pool that spends no Fable reads 100%. Null when none reports Fable.
  */
 export function fableSummary(
   profiles: readonly ProfileStatus[],
@@ -233,9 +235,18 @@ export function fableSummary(
   const known = withFable
     .map((p) => ({ p, left: fableLeft(p, now) }))
     .filter((r): r is { p: ProfileStatus; left: number } => r.left !== null)
+  const allowance = withFable
+    .map((p) => {
+      const fable = fableAt(p.fable as FableAllowance, now)
+      if (fable.refusedUntil !== null && fable.refusedUntil > now) return 0
+      const used = fable.usedFraction
+      return used === null || !Number.isFinite(used) ? null : 1 - Math.min(1, Math.max(0, used))
+    })
+    .filter((l): l is number => l !== null)
   return {
     withFable: withFable.length,
     canTake: known.filter((r) => r.left > 0 && hasHeadroom(r.p, now)).length,
-    left: known.length === 0 ? null : known.reduce((sum, r) => sum + r.left, 0) / known.length,
+    left:
+      allowance.length === 0 ? null : allowance.reduce((sum, l) => sum + l, 0) / allowance.length,
   }
 }

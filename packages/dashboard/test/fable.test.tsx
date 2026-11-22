@@ -107,6 +107,20 @@ describe('fableLeft', () => {
     ).toBe(1)
   })
 
+  it('says how much of the Fable allowance is left, whatever the week leaves', () => {
+    // Two weeks used up and one with room, no Fable spent: all of the allowance is left, one can take it.
+    const profiles = [
+      sub('a', { usedFraction: 0, resetsAt: NOW + HOUR_MS, refusedUntil: null }, 1),
+      sub('b', { usedFraction: 0.02, resetsAt: NOW + HOUR_MS, refusedUntil: null }, 1),
+      sub('c', { usedFraction: 0, resetsAt: NOW + HOUR_MS, refusedUntil: null }, 0.03),
+    ]
+    expect(fableSummary(profiles, NOW)).toEqual({
+      withFable: 3,
+      canTake: 1,
+      left: expect.closeTo(0.9933, 3),
+    })
+  })
+
   it('sums the pool, leaving out seats without Fable', () => {
     const profiles = [
       sub('a', { usedFraction: 0.2, resetsAt: null, refusedUntil: null }),
