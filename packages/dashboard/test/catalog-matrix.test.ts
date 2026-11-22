@@ -33,6 +33,8 @@ const EMITTED: Record<string, readonly Dimension[]> = {
   'claw_master.inference.tokens': ['profile', 'type'],
   'claw_master.inference.tokens.by_client_account': ['client_account', 'type'],
   'claw_master.inference.tokens.by_client': ['client', 'type'],
+  // ejc3/CLIProxyAPI#37.
+  'claw_master.inference.tokens.by_model': ['model', 'type'],
 }
 
 const METRICS: SemanticMetric[] = [

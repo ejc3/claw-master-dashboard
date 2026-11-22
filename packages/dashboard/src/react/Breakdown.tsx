@@ -187,9 +187,8 @@ export function Breakdown(props: {
       ? 'Tokens'
       : `${tokenChoiceLabel(props.tokenChoice)} tokens`
     : 'Requests'
-  const note = !split.tokens
-    ? 'claw-master does not count tokens by model; this view counts requests.'
-    : coverage === 'none'
+  const note =
+    coverage === 'none'
       ? split.requests
         ? 'No token counts for this range yet; showing requests.'
         : `No token counts by ${split.noun} yet: claw-master releases that count them send them.`
