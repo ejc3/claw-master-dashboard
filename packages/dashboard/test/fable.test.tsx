@@ -171,7 +171,7 @@ describe('the Fable allowance on the page', () => {
 
     act(() => (row('bravo').querySelector('button') as HTMLButtonElement).click())
     const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
-    expect(detail).toContain('Fable 100% used · resets')
+    expect(detail).toContain('Fable 0% left · resets in 1d 6h')
     expect(detail).toContain(
       'Anthropic refuses its Fable requests for 1d 6h; they go to other subscriptions, and it serves every other model',
     )
@@ -187,8 +187,28 @@ describe('the Fable allowance on the page', () => {
     expect(container.querySelector('[data-window="fable"]')?.getAttribute('data-level')).toBe('ok')
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
-    expect(detail).toContain('Fable 0% used')
-    expect(detail).not.toContain('Fable 100% used')
+    expect(detail).toContain('Fable 100% left')
+    expect(detail).not.toContain('Fable 0% left')
+  })
+
+  it('says how much Fable is left as the bar does, and when the week is what limits it', () => {
+    // 10% of the week left is 20% of a Fable allowance that is half the week; 75% of the allowance is unused.
+    const container = mount(
+      <PoolAccounts
+        profiles={[
+          sub(
+            'team-echo',
+            { usedFraction: 0.25, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+            0.9,
+          ),
+        ]}
+        now={NOW}
+      />,
+    )
+    act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
+    expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
+      'Fable 20% left (all the week leaves; its own allowance has 75% left) · resets with the week',
+    )
   })
 
   it('keeps the old legend when no subscription has Fable', () => {

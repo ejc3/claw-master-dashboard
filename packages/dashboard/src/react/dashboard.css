@@ -469,42 +469,6 @@
     outline-offset: -1px;
   }
 
-  /* Each column its own pattern, so week, 5h and Fable tell apart without counting places: the week
-     solid, the 5-hour window in stripes, Fable in dots, all in the subscription's own color over a
-     light wash of it, so what is filled still reads as filled. The legend's keys show the same. */
-  .cmd-account-fill,
-  .cmd-bar-key {
-    --cmd-pattern-ink: var(--cmd-account-fill, var(--cmd-fill));
-    --cmd-pattern-wash: color-mix(in srgb, var(--cmd-pattern-ink) 35%, transparent);
-  }
-
-  .cmd-bar-key {
-    --cmd-pattern-ink: var(--cmd-ink-3);
-    display: inline-block;
-    width: 5px;
-    height: 9px;
-    margin-right: 3px;
-    vertical-align: -1px;
-    border-radius: 1px;
-    background: var(--cmd-pattern-ink);
-  }
-
-  .cmd-account-bar[data-window="fiveHour"] > .cmd-account-fill,
-  .cmd-bar-key[data-window="fiveHour"] {
-    background: repeating-linear-gradient(
-      0deg,
-      var(--cmd-pattern-ink) 0 2px,
-      var(--cmd-pattern-wash) 2px 3.5px
-    );
-  }
-
-  .cmd-account-bar[data-window="fable"] > .cmd-account-fill,
-  .cmd-bar-key[data-window="fable"] {
-    background:
-      radial-gradient(circle, var(--cmd-pattern-ink) 1.1px, transparent 1.5px) 0 0 / 3.5px 3.5px,
-      var(--cmd-pattern-wash);
-  }
-
   @media (min-width: 720px) {
     .cmd-pool-head {
       grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1403,17 +1367,6 @@
       forced-color-adjust: none;
       background: Highlight;
       color: HighlightText;
-    }
-
-    /* The columns keep their patterns, in the system's text color. */
-    .cmd-account-fill,
-    .cmd-bar-key {
-      --cmd-pattern-ink: CanvasText;
-      --cmd-pattern-wash: Canvas;
-    }
-
-    .cmd-account-bar:not([data-window="weekly"]) > .cmd-account-fill {
-      forced-color-adjust: none;
     }
 
     /* No reading: a dashed border, never the solid one of a 0% bar. */
