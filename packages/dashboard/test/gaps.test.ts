@@ -60,6 +60,20 @@ const headline = (g: PoolGaps) => {
 }
 
 describe('poolGaps: both windows in one simulation', () => {
+  it('draws a refused week as nothing left until the refusal ends, whatever the poll reads', () => {
+    // The poll reads the week unused (its usage was reset), but Anthropic refuses it for 55 hours.
+    const refused = sub('a', [0, 55 * H], null, { rateLimitedUntil: NOW + 55 * H })
+    const other = sub('b', [0.5, 100 * H], null)
+    const g = poolGaps([refused, other], NOW, rates({}), NOW)
+    const at = (t: number) => g.trace.find((p) => p.at >= NOW + t) ?? g.trace[0]
+    const index = g.subscriptions.indexOf('a')
+    expect(at(H)?.weeklyBy[index]).toBe(0)
+    // The total is the other subscription's alone.
+    expect(at(H)?.weekly).toBe(at(H)?.weeklyBy[1 - index])
+    // Once the refusal ends (at its week's reset) the new week is there.
+    expect(at(56 * H)?.weeklyBy[index]).toBeGreaterThan(0.9)
+  })
+
   it('a pool much like a real one: 5-hour gaps soon, then a week of days', () => {
     // One subscription with room in its week and little in its 5-hour window, one with room in
     // its week and no 5-hour reading, two whose weeks are used up.

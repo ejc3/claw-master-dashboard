@@ -653,12 +653,16 @@ export function poolGaps(
     for (const s of slots) {
       resetWeek(s, at)
       closeIfOver(s.five, at)
-      weekly += 1 - s.weekly.used
-      weeklyBy.push(1 - s.weekly.used)
+      // Nothing is left to use while Anthropic refuses the subscription, whatever the poll reads of
+      // its week: a week the poll reads unused but Anthropic refuses (seen 2026-11-22) is not
+      // capacity, and drawing it as such contradicts the shading that says none can take work.
+      const refused = s.limitedUntil !== null && s.limitedUntil > at
+      const weekLeft = refused ? 0 : 1 - s.weekly.used
+      weekly += weekLeft
+      weeklyBy.push(weekLeft)
       // What a 5-hour window can still take: nothing while Anthropic refuses the subscription or
       // its week is full, and never more than its week leaves, since work in the window spends the
       // week too (as fiveHourLeft, for the bars).
-      const refused = s.limitedUntil !== null && s.limitedUntil > at
       const five = isFull(s.weekly) || refused ? 0 : Math.min(1 - s.five.used, 1 - s.weekly.used)
       fiveHour += five
       fiveHourBy.push(five)
