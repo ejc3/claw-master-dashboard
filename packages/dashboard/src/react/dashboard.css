@@ -475,11 +475,11 @@
     background: var(--cmd-account-fill, var(--cmd-fill));
   }
 
-  /* Where Fable's reach ends on the week: a vertical line standing a little proud of the bar. */
+  /* Where Fable's reach ends on the week: a vertical line just proud of the bar. */
   .cmd-meter-fable {
     position: absolute;
-    top: -3px;
-    bottom: -3px;
+    top: -1px;
+    bottom: -1px;
     width: 2px;
     margin-left: -1px;
     border-radius: 1px;
