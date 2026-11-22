@@ -212,7 +212,9 @@ export function fableLeft(profile: ProfileStatus, now: EpochMs): number | null {
   if (weekUsedUp(profile, now) || blocked(profile, now)?.reason === 'rate-limited') return 0
   if (fable.usedFraction === null || !Number.isFinite(fable.usedFraction)) return null
   const left = 1 - Math.min(1, Math.max(0, fable.usedFraction))
-  const weekUsed = profile.weekly.usedFraction
+  // A week past its reset has nothing used yet, whatever was last read.
+  const weekOver = profile.weekly.resetsAt !== null && profile.weekly.resetsAt <= now
+  const weekUsed = weekOver ? 0 : profile.weekly.usedFraction
   if (weekUsed === null || !Number.isFinite(weekUsed)) return left
   return Math.min(left, Math.max(0, 1 - weekUsed) / FABLE_SHARE_OF_WEEK)
 }

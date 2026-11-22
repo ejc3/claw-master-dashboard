@@ -87,6 +87,13 @@ describe('fableLeft', () => {
     ).toBeCloseTo(0.75)
   })
 
+  it('leaves all of it when both weeks have reset before the next poll', () => {
+    const reset = sub('a', { usedFraction: 1, resetsAt: NOW - 1, refusedUntil: null }, 1)
+    reset.weekly = { ...reset.weekly, resetsAt: NOW - 1 }
+    expect(fableLeft(reset, NOW)).toBe(1)
+    expect(fableSummary([reset], NOW)?.canTake).toBe(1)
+  })
+
   it('counts a subscription as able to take Fable only when it is available', () => {
     const limited = sub('a', { usedFraction: 0.1, resetsAt: NOW + HOUR_MS, refusedUntil: null })
     limited.rateLimitedUntil = NOW + HOUR_MS
