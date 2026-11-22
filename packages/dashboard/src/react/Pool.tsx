@@ -16,6 +16,7 @@ import {
   gapsHeadline,
   HOUR_MS,
   hasHeadroom,
+  noFiveHourLimit,
   type PoolGaps,
   type PoolTone,
   type ProfileStatus,
@@ -183,11 +184,13 @@ function WindowDetail(props: {
   who: string
   window: { usedFraction: number | null; resetsAt: EpochMs | null } | null
   closed?: boolean
+  /** What to say with no window at all; "no reading" unless given. */
+  none?: string
   now: EpochMs
 }) {
   const when = useWhen()
   const { window: w, now } = props
-  if (w === null) return <li>{props.name}: no reading</li>
+  if (w === null) return <li>{props.none ?? `${props.name}: no reading`}</li>
   if (props.closed) return <li>{props.name}: not in use</li>
   const used = share(w.usedFraction)
   const resets = w.resetsAt !== null && w.resetsAt > now ? w.resetsAt : null
@@ -340,7 +343,11 @@ export function PoolAccounts(props: {
                 <span className="cmd-account-name">{names.get(p.profile)}</span>
                 <span className="cmd-visually-hidden">
                   {`: week ${formatPercent(weekly === null ? null : 1 - weekly)} left, 5-hour ${
-                    five === null ? 'no reading' : `${formatPercent(1 - five)} left`
+                    five !== null
+                      ? `${formatPercent(1 - five)} left`
+                      : noFiveHourLimit(p)
+                        ? 'no limit'
+                        : 'no reading'
                   }${
                     fable === undefined
                       ? ''
@@ -380,6 +387,7 @@ export function PoolAccounts(props: {
                 who={shown.profile}
                 window={fiveHourAt(shown.fiveHour, props.now)}
                 closed={shown.fiveHour?.resetsAt != null && shown.fiveHour.resetsAt <= props.now}
+                {...(noFiveHourLimit(shown) ? { none: 'No 5-hour limit on this plan' } : {})}
                 now={props.now}
               />
             )}
