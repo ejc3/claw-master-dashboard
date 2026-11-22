@@ -73,3 +73,35 @@ describe('a subscription with no 5-hour limit', () => {
     )
   })
 })
+
+describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
+  it("shows the week's room, dimmed; one with a 5-hour window is not dimmed", () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[
+            sub('team-ultra', 0.25, null),
+            sub('team-max', 0.25, {
+              usedFraction: 0.5,
+              resetsAt: NOW + HOUR_MS,
+              lengthMs: 5 * HOUR_MS,
+            }),
+          ]}
+          now={NOW}
+        />,
+      ),
+    )
+    const bar = (name: string) =>
+      [...container.querySelectorAll('.cmd-account')]
+        .find((e) => e.querySelector('.cmd-account-name')?.textContent === name)
+        ?.querySelector('[data-window="fiveHour"]') as HTMLElement
+    expect(bar('ultra').hasAttribute('data-dim')).toBe(true)
+    expect((bar('ultra').firstElementChild as HTMLElement).style.height).toBe('75%')
+    expect(bar('max').hasAttribute('data-dim')).toBe(false)
+    expect((bar('max').firstElementChild as HTMLElement).style.height).toBe('50%')
+  })
+})

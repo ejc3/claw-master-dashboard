@@ -469,6 +469,11 @@
     outline-offset: -1px;
   }
 
+  /* A limit the subscription does not have (no 5-hour limit): the bar shows the week's room, dimmed. */
+  .cmd-account-bar[data-dim] {
+    opacity: 0.4;
+  }
+
   @media (min-width: 720px) {
     .cmd-pool-head {
       grid-template-columns: auto minmax(0, 1fr) auto;
