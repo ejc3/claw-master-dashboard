@@ -101,7 +101,8 @@ const CALENDAR_AHEAD_MS = 30 * 24 * 60 * 60_000
 export function calendarResponse(params: URLSearchParams): Response {
   const title = params.get('title') ?? ''
   const raw = params.get('at') ?? ''
-  const at = /^\d{1,16}$/.test(raw) ? Number(raw) : Number.NaN
+  // A reset read from a countdown can carry a fraction of a millisecond.
+  const at = /^\d{1,16}(\.\d{1,9})?$/.test(raw) ? Math.round(Number(raw)) : Number.NaN
   const now = Date.now()
   if (
     title.length === 0 ||
