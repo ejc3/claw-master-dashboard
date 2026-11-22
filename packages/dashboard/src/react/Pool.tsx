@@ -169,7 +169,8 @@ function Sparkle(props: { color: string }) {
  * Times are UTC, so it lands right in any zone.
  */
 export function calendarHref(title: string, at: EpochMs, base = ''): string {
-  if (base !== '') return `${base}/reset.ics?${new URLSearchParams({ title, at: String(at) })}`
+  if (base !== '')
+    return `${base}/reset.ics?${new URLSearchParams({ title, at: String(Math.round(at)) })}`
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(calendarIcs(title, at))}`
 }
 

@@ -34,6 +34,8 @@ describe('a reset as a calendar file', () => {
     expect(body).toBe(calendarIcs('alpha: weekly limit resets', at))
     expect(body).toContain('SUMMARY:alpha: weekly limit resets')
     expect(body).toContain('DTSTART:20261124T200000Z')
+    // A reset read from a countdown has a fraction of a millisecond (seen live).
+    expect(calendarResponse(new URLSearchParams({ title: 'x', at: `${at}.4534` })).status).toBe(200)
   })
 
   it('refuses a missing or overlong title and a time out of range', () => {
@@ -81,7 +83,9 @@ describe('the subscription detail', () => {
   }
 
   it("links a reset to the API's calendar file, and says Fable resets with the week", () => {
-    const detail = open(sub(NOW + 50 * HOUR_MS + 30_000), '/api/claw-master')
+    const fractional = sub(NOW + 50 * HOUR_MS + 30_000)
+    fractional.weekly = { ...fractional.weekly, resetsAt: NOW + 50 * HOUR_MS + 0.4534 }
+    const detail = open(fractional, '/api/claw-master')
     const link = detail.querySelector('a') as HTMLAnchorElement
     expect(link.getAttribute('href')).toMatch(
       /^\/api\/claw-master\/reset\.ics\?title=team-alpha%3A\+weekly\+limit\+resets&at=\d+$/,
