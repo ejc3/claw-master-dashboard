@@ -79,7 +79,13 @@ const share = (f: number | null | undefined) =>
  * charts, which also show what is left); dashed and empty when there is no reading. A used-up
  * window is an empty bar.
  */
-function LeftBar(props: { used: number | null; window: WindowKind | 'fable'; color: string }) {
+function LeftBar(props: {
+  used: number | null
+  window: WindowKind | 'fable'
+  color: string
+  /** The bar stands for a limit the subscription does not have: drawn, but dimmed. */
+  dim?: boolean
+}) {
   const { used } = props
   const level = used === null ? 'unknown' : used >= 1 ? 'full' : used >= 0.9 ? 'high' : 'ok'
   const left = used === null ? null : 1 - used
@@ -88,6 +94,7 @@ function LeftBar(props: { used: number | null; window: WindowKind | 'fable'; col
       className="cmd-account-bar"
       data-window={props.window}
       data-level={level}
+      data-dim={props.dim || undefined}
       style={{ '--cmd-account-fill': props.color } as CSSProperties}
     >
       {left !== null && left > 0 && <span style={{ height: `${Math.round(left * 1000) / 10}%` }} />}
@@ -373,7 +380,13 @@ export function PoolAccounts(props: {
               >
                 <span className="cmd-account-bars" aria-hidden="true">
                   <LeftBar used={weekly} window="weekly" color={colors.get(p.profile) ?? ''} />
-                  <LeftBar used={five} window="fiveHour" color={colors.get(p.profile) ?? ''} />
+                  {/* No 5-hour limit: what limits the next five hours is the week, drawn dimmed. */}
+                  <LeftBar
+                    used={five === null && noFiveHourLimit(p) ? weekly : five}
+                    window="fiveHour"
+                    color={colors.get(p.profile) ?? ''}
+                    dim={five === null && noFiveHourLimit(p)}
+                  />
                   {fable !== undefined && (
                     <LeftBar
                       used={fable === null ? null : 1 - fable}
