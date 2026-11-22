@@ -186,8 +186,6 @@ function WindowDetail(props: {
   closed?: boolean
   /** What to say with no window at all; "no reading" unless given. */
   none?: string
-  /** Said instead of the reset time, when it is another line's (Fable resets with the week). */
-  resetsWith?: string
   now: EpochMs
 }) {
   const when = useWhen()
@@ -200,9 +198,7 @@ function WindowDetail(props: {
   return (
     <li>
       {props.name} {formatPercent(used)} used
-      {resets !== null && props.resetsWith !== undefined ? (
-        ` · resets ${props.resetsWith}`
-      ) : resets === null ? (
+      {resets === null ? (
         ' · reset time unknown'
       ) : (
         <>
@@ -223,6 +219,36 @@ function WindowDetail(props: {
           {when === null ? '' : ` (in ${formatCountdown(resets - now)})`}
         </>
       )}
+    </li>
+  )
+}
+
+/**
+ * The detail's Fable line: how much Fable the subscription can still use, the same figure as its bar
+ * (fableLeft: the Fable allowance left, never more than the week leaves in Fable's units). When the
+ * week is what limits it, the allowance's own figure is said too.
+ */
+function FableDetail(props: { profile: ProfileStatus; now: EpochMs }) {
+  const { profile, now } = props
+  if (profile.fable == null) return null
+  const left = fableLeft(profile, now)
+  const fable = fableAt(profile.fable, now)
+  const own = share(fable.usedFraction)
+  const allowanceLeft = own === null ? null : 1 - own
+  const weekLimits = left !== null && allowanceLeft !== null && left < allowanceLeft - 0.005
+  const resets =
+    fable.resetsAt === null || fable.resetsAt <= now
+      ? ''
+      : sameMoment(fable.resetsAt, profile.weekly.resetsAt)
+        ? ' · resets with the week'
+        : ` · resets in ${formatCountdown(fable.resetsAt - now)}`
+  return (
+    <li>
+      {`Fable ${left === null ? 'no reading' : `${formatPercent(left)} left`}${
+        weekLimits
+          ? ` (all the week leaves; its own allowance has ${formatPercent(allowanceLeft)} left)`
+          : ''
+      }${resets}`}
     </li>
   )
 }
@@ -422,17 +448,7 @@ export function PoolAccounts(props: {
                 <li>{`The week has ${formatPercent(left)} left, so the 5-hour window can use only that`}</li>
               )
             })()}
-            {shown.fable != null && (
-              <WindowDetail
-                name="Fable"
-                who={shown.profile}
-                window={fableAt(shown.fable, props.now)}
-                {...(sameMoment(shown.fable.resetsAt, shown.weekly.resetsAt)
-                  ? { resetsWith: 'with the week' }
-                  : {})}
-                now={props.now}
-              />
-            )}
+            {shown.fable != null && <FableDetail profile={shown} now={props.now} />}
             {shown.fable?.refusedUntil != null && shown.fable.refusedUntil > props.now && (
               <li>
                 {`Anthropic refuses its Fable requests for ${formatCountdown(shown.fable.refusedUntil - props.now)}; they go to other subscriptions, and it serves every other model`}

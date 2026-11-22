@@ -91,14 +91,15 @@ describe('the subscription detail', () => {
       /^\/api\/claw-master\/reset\.ics\?title=team-alpha%3A\+weekly\+limit\+resets&at=\d+$/,
     )
     expect(link.hasAttribute('download')).toBe(false)
-    expect(detail.textContent).toContain('Fable 0% used · resets with the week')
+    expect(detail.textContent).toContain('Fable 100% left · resets with the week')
     expect(detail.querySelectorAll('a')).toHaveLength(1)
   })
 
   it('gives Fable its own reset when it differs from the week', () => {
     const detail = open(sub(NOW + 20 * HOUR_MS), '')
     expect(detail.textContent).not.toContain('resets with the week')
-    expect(detail.querySelectorAll('a')).toHaveLength(2)
+    expect(detail.textContent).toContain('Fable 100% left · resets in 20h')
+    expect(detail.querySelectorAll('a')).toHaveLength(1)
     expect((detail.querySelector('a') as HTMLAnchorElement).getAttribute('href')).toMatch(
       /^data:text\/calendar/,
     )
