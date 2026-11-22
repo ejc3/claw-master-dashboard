@@ -1,5 +1,11 @@
 import { projectedExhaustion } from './pace'
-import { type EpochMs, HOUR_MS, type ProfileStatus, type QuotaWindow } from './types'
+import {
+  type EpochMs,
+  type FableAllowance,
+  HOUR_MS,
+  type ProfileStatus,
+  type QuotaWindow,
+} from './types'
 
 export interface RunOut {
   profile: string
@@ -178,4 +184,58 @@ export const LOGIN_OVERDUE_MS = 3 * HOUR_MS
 export function loginOverdue(profile: ProfileStatus, now: EpochMs): boolean {
   const at = profile.tokenExpiresAt
   return at !== null && at > now && at - now < LOGIN_OVERDUE_MS
+}
+
+/** The share of the weekly limit Fable may use on Max and Ultra: its allowance is half the week. */
+export const FABLE_SHARE_OF_WEEK = 0.5
+
+/**
+ * A Fable allowance as of `at`: as read while its reset is ahead (or unknown); once the reset has
+ * passed, a new week with nothing used and no reset known yet. A refusal stays as read: it says
+ * when it ends.
+ */
+export function fableAt(fable: FableAllowance, at: EpochMs): FableAllowance {
+  if (fable.resetsAt === null || fable.resetsAt > at) return fable
+  return { ...fable, usedFraction: 0, resetsAt: null }
+}
+
+/**
+ * What a subscription has left of its weekly Fable allowance now, as a share of it; null when it
+ * reports no Fable figure (no Fable in its plan, or an older claw-master) or no reading. Nothing
+ * while Anthropic refuses it Fable, or while its week is used up or refused. Fable also spends the
+ * week, so it can never use more than the week has left, counted in Fable's own units.
+ */
+export function fableLeft(profile: ProfileStatus, now: EpochMs): number | null {
+  if (profile.fable === undefined || profile.fable === null) return null
+  const fable = fableAt(profile.fable, now)
+  if (fable.refusedUntil !== null && fable.refusedUntil > now) return 0
+  if (weekUsedUp(profile, now) || blocked(profile, now)?.reason === 'rate-limited') return 0
+  if (fable.usedFraction === null || !Number.isFinite(fable.usedFraction)) return null
+  const left = 1 - Math.min(1, Math.max(0, fable.usedFraction))
+  // A week past its reset has nothing used yet, whatever was last read.
+  const weekOver = profile.weekly.resetsAt !== null && profile.weekly.resetsAt <= now
+  const weekUsed = weekOver ? 0 : profile.weekly.usedFraction
+  if (weekUsed === null || !Number.isFinite(weekUsed)) return left
+  return Math.min(left, Math.max(0, 1 - weekUsed) / FABLE_SHARE_OF_WEEK)
+}
+
+/**
+ * The pool's Fable at a glance: how many subscriptions have a Fable allowance, how many can take
+ * Fable now (available, with Fable left), and the share left across those with a reading. Null
+ * when none reports Fable.
+ */
+export function fableSummary(
+  profiles: readonly ProfileStatus[],
+  now: EpochMs,
+): { withFable: number; canTake: number; left: number | null } | null {
+  const withFable = profiles.filter((p) => p.fable !== undefined && p.fable !== null)
+  if (withFable.length === 0) return null
+  const known = withFable
+    .map((p) => ({ p, left: fableLeft(p, now) }))
+    .filter((r): r is { p: ProfileStatus; left: number } => r.left !== null)
+  return {
+    withFable: withFable.length,
+    canTake: known.filter((r) => r.left > 0 && hasHeadroom(r.p, now)).length,
+    left: known.length === 0 ? null : known.reduce((sum, r) => sum + r.left, 0) / known.length,
+  }
 }

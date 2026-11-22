@@ -6,6 +6,9 @@ import {
   type CapacityAdvice,
   COVERAGE_TARGET,
   type EpochMs,
+  fableAt,
+  fableLeft,
+  fableSummary,
   fiveHourAt,
   fiveHourLeft,
   formatCountdown,
@@ -65,7 +68,7 @@ const share = (f: number | null | undefined) =>
  * charts, which also show what is left); dashed and empty when there is no reading. A used-up
  * window is an empty bar.
  */
-function LeftBar(props: { used: number | null; window: WindowKind; color: string }) {
+function LeftBar(props: { used: number | null; window: WindowKind | 'fable'; color: string }) {
   const { used } = props
   const level = used === null ? 'unknown' : used >= 1 ? 'full' : used >= 0.9 ? 'high' : 'ok'
   const left = used === null ? null : 1 - used
@@ -302,6 +305,8 @@ export function PoolAccounts(props: {
           const fiveLeft = fiveHourLeft(p, props.now)
           const five = fiveLeft === null ? null : 1 - fiveLeft
           const available = hasHeadroom(p, props.now)
+          // Only a subscription whose plan has a Fable allowance gets its third bar.
+          const fable = p.fable == null ? undefined : fableLeft(p, props.now)
           return (
             <li
               key={p.profile}
@@ -324,11 +329,22 @@ export function PoolAccounts(props: {
                 <span className="cmd-account-bars" aria-hidden="true">
                   <LeftBar used={weekly} window="weekly" color={colors.get(p.profile) ?? ''} />
                   <LeftBar used={five} window="fiveHour" color={colors.get(p.profile) ?? ''} />
+                  {fable !== undefined && (
+                    <LeftBar
+                      used={fable === null ? null : 1 - fable}
+                      window="fable"
+                      color={colors.get(p.profile) ?? ''}
+                    />
+                  )}
                 </span>
                 <span className="cmd-account-name">{names.get(p.profile)}</span>
                 <span className="cmd-visually-hidden">
                   {`: week ${formatPercent(weekly === null ? null : 1 - weekly)} left, 5-hour ${
                     five === null ? 'no reading' : `${formatPercent(1 - five)} left`
+                  }${
+                    fable === undefined
+                      ? ''
+                      : `, Fable ${fable === null ? 'no reading' : `${formatPercent(fable)} left`}`
                   }${available ? '' : ', not available'}`}
                 </span>
               </button>
@@ -337,7 +353,9 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        Bars: week, 5h left
+        {props.profiles.some((p) => p.fable != null)
+          ? 'Bars: week, 5h, Fable left'
+          : 'Bars: week, 5h left'}
       </p>
       {shown !== null && (
         <div id="cmd-account-detail" className="cmd-account-detail" role="status">
@@ -380,6 +398,19 @@ export function PoolAccounts(props: {
                 <li>{`The week has ${formatPercent(left)} left, so the 5-hour window can use only that`}</li>
               )
             })()}
+            {shown.fable != null && (
+              <WindowDetail
+                name="Fable"
+                who={shown.profile}
+                window={fableAt(shown.fable, props.now)}
+                now={props.now}
+              />
+            )}
+            {shown.fable?.refusedUntil != null && shown.fable.refusedUntil > props.now && (
+              <li>
+                {`Anthropic refuses its Fable requests for ${formatCountdown(shown.fable.refusedUntil - props.now)}; they go to other subscriptions, and it serves every other model`}
+              </li>
+            )}
           </ul>
         </div>
       )}
@@ -654,6 +685,15 @@ export function PoolOutlook(props: {
         : [pace.charAt(0).toUpperCase() + pace.slice(1)]
       : [pace === null ? props.detail : `${props.detail} · ${pace}`]
   const lines = [...facts, ...status]
+  // Fable has its own weekly allowance on each subscription (up to half the week): say what is left.
+  const fable = props.profiles === null ? null : fableSummary(props.profiles, now)
+  if (fable !== null) {
+    lines.push(
+      `Fable: ${fable.canTake} of ${fable.withFable} can take it${
+        fable.left === null ? '' : ` · ${formatPercent(fable.left)} of their Fable allowance left`
+      }`,
+    )
+  }
   return (
     <section className="cmd-pool" data-tone={tone} aria-labelledby="cmd-pool-headline">
       <div className="cmd-pool-head">

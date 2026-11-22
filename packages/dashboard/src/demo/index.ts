@@ -82,6 +82,9 @@ interface DemoProfile {
   cooldownMs: number | null
   tokenLeftMs: number
   latencyScale: number
+  /** The weekly Fable allowance used, and how long Anthropic still refuses Fable; null: no Fable. */
+  fableUsed: number | null
+  fableRefusedMs?: number
   /** How long ago the subscription joined the pool: it has no weekly reading before then. */
   joinedAgoMs?: number
 }
@@ -97,6 +100,7 @@ const PROFILES: readonly DemoProfile[] = [
     cooldownMs: null,
     tokenLeftMs: 5.5 * HOUR_MS,
     latencyScale: 1,
+    fableUsed: 0.38,
   },
   {
     name: 'bravo',
@@ -108,6 +112,9 @@ const PROFILES: readonly DemoProfile[] = [
     cooldownMs: null,
     tokenLeftMs: 4.5 * HOUR_MS,
     latencyScale: 1.1,
+    // Out of Fable: Anthropic refuses its Fable requests until the week resets; it serves the rest.
+    fableUsed: 1,
+    fableRefusedMs: 2.6 * 24 * HOUR_MS,
   },
   {
     name: 'charlie',
@@ -119,6 +126,7 @@ const PROFILES: readonly DemoProfile[] = [
     cooldownMs: null,
     tokenLeftMs: 7 * HOUR_MS,
     latencyScale: 0.9,
+    fableUsed: 0.6,
   },
   {
     name: 'delta',
@@ -130,6 +138,7 @@ const PROFILES: readonly DemoProfile[] = [
     cooldownMs: 7 * MINUTE_MS,
     tokenLeftMs: 6 * HOUR_MS,
     latencyScale: 1.3,
+    fableUsed: null,
     // Added a day and a bit ago, outside the forecast's day of smoothing: the 7-day range shows
     // the pool's step up.
     joinedAgoMs: 30 * HOUR_MS,
@@ -373,6 +382,14 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
           p99: 52000 * p.latencyScale,
         },
         email: `${p.name.replace(/^.*-/, '')}@example.com`,
+        fable:
+          p.fableUsed === null
+            ? null
+            : {
+                usedFraction: p.fableUsed,
+                resetsAt: now + p.weeklyResetsInMs,
+                refusedUntil: p.fableRefusedMs === undefined ? null : now + p.fableRefusedMs,
+              },
       }))
       return { asOf, profiles, sessions: 23, activeConnections: 41 }
     },
