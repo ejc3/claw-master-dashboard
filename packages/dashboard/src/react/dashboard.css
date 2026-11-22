@@ -338,13 +338,13 @@
     gap: 2px;
   }
 
-  /* Each subscription's week and 5-hour use: two tiny bars and a short name. */
+  /* Each subscription: its name, a bar of what its week has left (Fable's share along the bar's bottom
+     edge, on the same axis) and a ring for its 5-hour window. Two to a row on a phone, more where
+     there is room, across the whole width under the headline. */
   .cmd-accounts {
-    grid-column: 2;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 10px;
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 6px;
     min-width: 0;
   }
 
@@ -352,36 +352,40 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
+    display: grid;
+    /* Two to a row on a phone; as many as fit, at least 240px each, where there is room. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 12px;
     min-width: 0;
   }
 
-  /* One line under the bars: which is which. */
+  /* One line under the subscriptions: what the marks are. */
   .cmd-accounts-legend {
-    flex-basis: 100%;
     margin: 0;
     font-size: 0.625rem;
     color: var(--cmd-ink-3);
   }
 
   .cmd-account {
-    min-width: 36px;
+    min-width: 0;
   }
 
-  /* Each subscription's bars are a button: hover or tap shows its detail. */
+  /* Each subscription is a button: hover or tap shows its detail. */
   .cmd-account > button {
     display: grid;
-    justify-items: center;
-    gap: 3px;
+    /* The same split on every subscription, so the bars line up down each column. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    align-items: center;
+    gap: 6px;
     width: 100%;
-    padding: 2px 4px;
+    min-height: 32px;
+    padding: 4px;
     border: 0;
     border-radius: 4px;
     background: none;
     color: inherit;
     font: inherit;
+    text-align: left;
     cursor: pointer;
   }
 
@@ -395,7 +399,6 @@
   }
 
   .cmd-account-detail {
-    flex-basis: 100%;
     margin-top: 4px;
     padding: 8px 12px;
     border: 1px solid var(--cmd-rule);
@@ -424,10 +427,10 @@
   }
 
   .cmd-account-name {
-    font-size: 0.6875rem;
-    line-height: 1.1;
+    min-width: 0;
+    font-size: 0.75rem;
+    line-height: 1.2;
     color: var(--cmd-ink-2);
-    max-width: 64px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -439,39 +442,79 @@
     text-decoration-color: color-mix(in srgb, var(--cmd-ink-3) 60%, transparent);
   }
 
-  .cmd-account-bars {
+  .cmd-account-marks {
     display: flex;
-    align-items: flex-end;
-    gap: 3px;
-    height: 28px;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
   }
 
-  .cmd-account-bar {
+  /* The week: what is left, from the left, in the subscription's color. */
+  .cmd-meter {
     position: relative;
     display: block;
-    width: 7px;
-    height: 100%;
-    border-radius: 2px;
+    flex: 1;
+    min-width: 28px;
+    height: 10px;
+    border-radius: 5px;
     background: var(--cmd-track);
     overflow: hidden;
   }
 
-  .cmd-account-bar > span {
+  .cmd-meter-week {
     position: absolute;
-    inset: auto 0 0;
-    border-radius: 2px 2px 0 0;
+    inset: 0 auto 0 0;
+    border-radius: 5px;
     background: var(--cmd-account-fill, var(--cmd-fill));
   }
 
-  .cmd-account-bar[data-level="unknown"] {
+  /* Fable's share of the week: a darker strip along the bottom edge. */
+  .cmd-meter-fable {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 4px;
+    border-radius: 0 0 0 5px;
+    background: color-mix(in srgb, var(--cmd-account-fill, var(--cmd-fill)) 50%, var(--cmd-ink));
+  }
+
+  .cmd-meter[data-level="unknown"] {
     background: none;
     outline: 1px dashed var(--cmd-ink-3);
     outline-offset: -1px;
   }
 
-  /* A limit the subscription does not have (no 5-hour limit): the bar shows the week's room, dimmed. */
-  .cmd-account-bar[data-dim] {
+  /* The 5-hour window: a small ring of what is left, clockwise from the top. */
+  .cmd-ring {
+    display: block;
+    flex: none;
+    width: 16px;
+    height: 16px;
+  }
+
+  .cmd-ring-track,
+  .cmd-ring-left {
+    fill: none;
+    stroke-width: 3;
+  }
+
+  .cmd-ring-track {
+    stroke: var(--cmd-track);
+  }
+
+  .cmd-ring-left {
+    stroke: var(--cmd-account-fill, var(--cmd-fill));
+  }
+
+  /* No 5-hour limit: the ring shows the week's room, dimmed. */
+  .cmd-ring[data-dim] .cmd-ring-left {
     opacity: 0.4;
+  }
+
+  .cmd-ring[data-level="unknown"] .cmd-ring-track {
+    stroke: var(--cmd-ink-3);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
   }
 
   @media (min-width: 720px) {
@@ -481,9 +524,11 @@
 
     .cmd-accounts {
       position: relative;
-      grid-column: 3;
-      grid-row: 1;
-      align-self: center;
+    }
+
+    .cmd-accounts ul {
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 2px 24px;
     }
 
     /* A mouse opens the detail by passing over a subscription. In the flow it would grow the
@@ -1340,14 +1385,15 @@
     .cmd-runway,
     .cmd-share,
     .cmd-status,
-    .cmd-account-bar {
+    .cmd-meter {
       border: 1px solid CanvasText;
     }
 
     .cmd-runway-used,
     .cmd-runway-now,
     .cmd-share span,
-    .cmd-account-bar > span,
+    .cmd-meter-week,
+    .cmd-meter-fable,
     .cmd-row::before {
       background: CanvasText;
     }
@@ -1375,9 +1421,13 @@
     }
 
     /* No reading: a dashed border, never the solid one of a 0% bar. */
-    .cmd-account-bar[data-level="unknown"] {
+    .cmd-meter[data-level="unknown"] {
       border-style: dashed;
       outline: none;
+    }
+
+    .cmd-ring-left {
+      stroke: CanvasText;
     }
 
     .cmd-band {
@@ -1453,7 +1503,7 @@
     }
   }
 
-  .cmd-account[data-returned] .cmd-account-bar > span {
+  .cmd-account[data-returned] .cmd-meter-week {
     animation: cmd-bar-glow 1.6s ease-out;
   }
 
@@ -1472,7 +1522,7 @@
       animation-name: cmd-sparkle-still;
     }
 
-    .cmd-account[data-returned] .cmd-account-bar > span {
+    .cmd-account[data-returned] .cmd-meter-week {
       animation: none;
     }
   }

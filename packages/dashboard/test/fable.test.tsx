@@ -151,22 +151,22 @@ describe('the Fable allowance on the page', () => {
     sub('team-charlie', null),
   ]
 
-  it('gives a seat with Fable a third bar, says it, and details it', () => {
+  it('gives a seat with Fable a Fable strip on its week bar, says it, and details it', () => {
     const container = mount(<PoolAccounts profiles={profiles} now={NOW} />)
     const row = (name: string) =>
       [...container.querySelectorAll('.cmd-account')].find(
         (e) => e.querySelector('.cmd-account-name')?.textContent === name,
       ) as Element
     const bars = (name: string) =>
-      [...row(name).querySelectorAll('.cmd-account-bar')].map((b) => b.getAttribute('data-window'))
-    expect(bars('alpha')).toEqual(['weekly', 'fiveHour', 'fable'])
+      [...row(name).querySelectorAll('[data-window]')].map((b) => b.getAttribute('data-window'))
+    expect(bars('alpha')).toEqual(['weekly', 'fable', 'fiveHour'])
     expect(bars('charlie')).toEqual(['weekly', 'fiveHour'])
     expect(row('bravo').querySelector('[data-window="fable"]')?.getAttribute('data-level')).toBe(
       'full',
     )
     expect(row('alpha').textContent).toContain('Fable 75% left')
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe(
-      'Bars: week, 5h, Fable left',
+      'Bar: week left (dark edge: Fable) · ring: 5 hours',
     )
 
     act(() => (row('bravo').querySelector('button') as HTMLButtonElement).click())
@@ -205,6 +205,10 @@ describe('the Fable allowance on the page', () => {
         now={NOW}
       />,
     )
+    // On the bar, Fable's strip is drawn in the week's units: never longer than what the week leaves.
+    const left = (w: string) =>
+      container.querySelector(`[data-window="${w}"]`)?.getAttribute('data-left')
+    expect([left('weekly'), left('fable')]).toEqual(['10%', '10%'])
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
       'Fable 20% left (all the week leaves; its own allowance has 75% left) · resets with the week',
@@ -213,7 +217,9 @@ describe('the Fable allowance on the page', () => {
 
   it('keeps the old legend when no subscription has Fable', () => {
     const container = mount(<PoolAccounts profiles={[sub('team-charlie', null)]} now={NOW} />)
-    expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe('Bars: week, 5h left')
+    expect(container.querySelector('.cmd-accounts-legend')?.textContent).toBe(
+      'Bar: week left · ring: 5 hours',
+    )
     expect(container.querySelector('[data-window="fable"]')).toBeNull()
   })
 

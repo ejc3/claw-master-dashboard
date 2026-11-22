@@ -16,6 +16,7 @@ import {
   COVERAGE_TARGET,
   calendarIcs,
   type EpochMs,
+  FABLE_SHARE_OF_WEEK,
   fableAt,
   fableLeft,
   fableSummary,
@@ -32,7 +33,6 @@ import {
   type ProfileStatus,
   pollSaysUsedUp,
   TRACE_STEP_MS,
-  type WindowKind,
   weekUsedUp,
 } from '../core'
 import { useWhen } from './hooks'
@@ -74,31 +74,80 @@ export function shortNames(names: string[]): Map<string, string> {
 const share = (f: number | null | undefined) =>
   f === null || f === undefined || !Number.isFinite(f) ? null : Math.min(1, Math.max(0, f))
 
+const pct = (f: number) => `${Math.round(Math.min(1, Math.max(0, f)) * 1000) / 10}%`
+
+const levelOf = (used: number | null) =>
+  used === null ? 'unknown' : used >= 1 ? 'full' : used >= 0.9 ? 'high' : 'ok'
+
 /**
- * A tiny bar: how much of a window is left, in the subscription's own color (the same as in the
- * charts, which also show what is left); dashed and empty when there is no reading. A used-up
- * window is an empty bar.
+ * One subscription's week as a horizontal bar of what is left, in its own color, and along its bottom
+ * edge a darker strip: how much of the week Fable could still use, on the same axis, so never longer
+ * than the week (Fable may use at most FABLE_SHARE_OF_WEEK of it). Dashed when there is no reading.
  */
-function LeftBar(props: {
+function WeekMeter(props: {
   used: number | null
-  window: WindowKind | 'fable'
+  /** The Fable allowance left (0–1, as fableLeft); undefined for a plan without one. */
+  fable?: number | null
   color: string
-  /** The bar stands for a limit the subscription does not have: drawn, but dimmed. */
-  dim?: boolean
 }) {
-  const { used } = props
-  const level = used === null ? 'unknown' : used >= 1 ? 'full' : used >= 0.9 ? 'high' : 'ok'
-  const left = used === null ? null : 1 - used
+  const left = props.used === null ? 0 : Math.max(0, 1 - props.used)
+  const fable =
+    props.fable == null ? 0 : Math.min(Math.max(0, props.fable) * FABLE_SHARE_OF_WEEK, left)
   return (
     <span
-      className="cmd-account-bar"
-      data-window={props.window}
-      data-level={level}
-      data-dim={props.dim || undefined}
+      className="cmd-meter"
+      data-window="weekly"
+      data-level={levelOf(props.used)}
+      data-left={pct(left)}
       style={{ '--cmd-account-fill': props.color } as CSSProperties}
     >
-      {left !== null && left > 0 && <span style={{ height: `${Math.round(left * 1000) / 10}%` }} />}
+      {left > 0 && <span className="cmd-meter-week" style={{ width: pct(left) }} />}
+      {props.fable !== undefined && (
+        <span
+          className="cmd-meter-fable"
+          data-window="fable"
+          data-level={levelOf(props.fable === null ? null : 1 - props.fable)}
+          data-left={pct(fable)}
+          style={{ width: pct(fable) }}
+        />
+      )}
     </span>
+  )
+}
+
+const RING_R = 5.5
+const RING_C = 2 * Math.PI * RING_R
+
+/**
+ * The 5-hour window as a small ring of what is left. A subscription without a 5-hour limit shows the
+ * week's room instead, dimmed (the limit does not apply); no reading is a dashed ring.
+ */
+function FiveRing(props: { used: number | null; dim: boolean; color: string }) {
+  const { used } = props
+  const left = used === null ? null : Math.min(1, Math.max(0, 1 - used))
+  return (
+    <svg
+      className="cmd-ring"
+      viewBox="0 0 16 16"
+      data-window="fiveHour"
+      data-level={levelOf(used)}
+      data-left={pct(left ?? 0)}
+      data-dim={props.dim || undefined}
+      style={{ '--cmd-account-fill': props.color } as CSSProperties}
+      aria-hidden="true"
+    >
+      <circle className="cmd-ring-track" cx="8" cy="8" r={RING_R} />
+      {left !== null && left > 0 && (
+        <circle
+          className="cmd-ring-left"
+          cx="8"
+          cy="8"
+          r={RING_R}
+          strokeDasharray={`${(left * RING_C).toFixed(2)} ${RING_C.toFixed(2)}`}
+          transform="rotate(-90 8 8)"
+        />
+      )}
+    </svg>
   )
 }
 
@@ -357,7 +406,7 @@ export function PoolAccounts(props: {
           const fiveLeft = fiveHourLeft(p, props.now)
           const five = fiveLeft === null ? null : 1 - fiveLeft
           const available = hasHeadroom(p, props.now)
-          // Only a subscription whose plan has a Fable allowance gets its third bar.
+          // Only a subscription whose plan has a Fable allowance gets the Fable strip.
           const fable = p.fable == null ? undefined : fableLeft(p, props.now)
           return (
             <li
@@ -378,24 +427,20 @@ export function PoolAccounts(props: {
                   if (event.pointerType === 'mouse') setOpen(p.profile)
                 }}
               >
-                <span className="cmd-account-bars" aria-hidden="true">
-                  <LeftBar used={weekly} window="weekly" color={colors.get(p.profile) ?? ''} />
-                  {/* No 5-hour limit: what limits the next five hours is the week, drawn dimmed. */}
-                  <LeftBar
-                    used={five === null && noFiveHourLimit(p) ? weekly : five}
-                    window="fiveHour"
-                    color={colors.get(p.profile) ?? ''}
-                    dim={five === null && noFiveHourLimit(p)}
-                  />
-                  {fable !== undefined && (
-                    <LeftBar
-                      used={fable === null ? null : 1 - fable}
-                      window="fable"
-                      color={colors.get(p.profile) ?? ''}
-                    />
-                  )}
-                </span>
                 <span className="cmd-account-name">{names.get(p.profile)}</span>
+                <span className="cmd-account-marks" aria-hidden="true">
+                  <WeekMeter
+                    used={weekly}
+                    color={colors.get(p.profile) ?? ''}
+                    {...(fable === undefined ? {} : { fable })}
+                  />
+                  {/* No 5-hour limit: what limits the next five hours is the week, drawn dimmed. */}
+                  <FiveRing
+                    used={five === null && noFiveHourLimit(p) ? weekly : five}
+                    dim={five === null && noFiveHourLimit(p)}
+                    color={colors.get(p.profile) ?? ''}
+                  />
+                </span>
                 <span className="cmd-visually-hidden">
                   {`: week ${formatPercent(weekly === null ? null : 1 - weekly)} left, 5-hour ${
                     five !== null
@@ -415,9 +460,7 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        {props.profiles.some((p) => p.fable != null)
-          ? 'Bars: week, 5h, Fable left'
-          : 'Bars: week, 5h left'}
+        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (dark edge: Fable)' : ''} · ring: 5 hours`}
       </p>
       {shown !== null && (
         <div id="cmd-account-detail" className="cmd-account-detail" role="status">

@@ -49,12 +49,7 @@ describe('dashboard.css', () => {
     const canvasText = rules(forced)
       .filter(([, body]) => /background:\s*CanvasText/.test(body))
       .flatMap(([selector]) => selector.split(',').map((x) => x.trim()))
-    for (const mark of [
-      '.cmd-runway-used',
-      '.cmd-row::before',
-      '.cmd-pulse',
-      '.cmd-account-bar > span',
-    ]) {
+    for (const mark of ['.cmd-runway-used', '.cmd-row::before', '.cmd-pulse', '.cmd-meter-week']) {
       expect(canvasText).toContain(mark)
     }
     // The class (or pseudo-element) each mark selector ends in.
@@ -95,9 +90,7 @@ describe('dashboard.css', () => {
 
   it('draws a bar with no reading dashed in forced colors, unlike a 0% one', () => {
     const forced = block('  @media (forced-colors: active)')
-    expect(forced).toMatch(
-      /\.cmd-account-bar\[data-level="unknown"\]\s*\{[^}]*border-style:\s*dashed/,
-    )
+    expect(forced).toMatch(/\.cmd-meter\[data-level="unknown"\]\s*\{[^}]*border-style:\s*dashed/)
   })
 })
 

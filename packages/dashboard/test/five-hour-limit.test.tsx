@@ -100,8 +100,8 @@ describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
         .find((e) => e.querySelector('.cmd-account-name')?.textContent === name)
         ?.querySelector('[data-window="fiveHour"]') as HTMLElement
     expect(bar('ultra').hasAttribute('data-dim')).toBe(true)
-    expect((bar('ultra').firstElementChild as HTMLElement).style.height).toBe('75%')
+    expect(bar('ultra').getAttribute('data-left')).toBe('75%')
     expect(bar('max').hasAttribute('data-dim')).toBe(false)
-    expect((bar('max').firstElementChild as HTMLElement).style.height).toBe('50%')
+    expect(bar('max').getAttribute('data-left')).toBe('50%')
   })
 })
