@@ -179,3 +179,39 @@ export function loginOverdue(profile: ProfileStatus, now: EpochMs): boolean {
   const at = profile.tokenExpiresAt
   return at !== null && at > now && at - now < LOGIN_OVERDUE_MS
 }
+
+/**
+ * What a subscription has left of its weekly Fable allowance now, as a share of it; null when it
+ * reports no Fable figure (no Fable in its plan, or an older claw-master). Nothing while Anthropic
+ * refuses it Fable, or while its week is used up or refused (Fable also spends the week); all of it
+ * once the Fable reset has passed.
+ */
+export function fableLeft(profile: ProfileStatus, now: EpochMs): number | null {
+  const fable = profile.fable
+  if (fable === undefined || fable === null) return null
+  if (fable.refusedUntil !== null && fable.refusedUntil > now) return 0
+  if (weekUsedUp(profile, now) || blocked(profile, now)?.reason === 'rate-limited') return 0
+  if (fable.resetsAt !== null && fable.resetsAt <= now) return 1
+  if (fable.usedFraction === null || !Number.isFinite(fable.usedFraction)) return null
+  return 1 - Math.min(1, Math.max(0, fable.usedFraction))
+}
+
+/**
+ * The pool's Fable at a glance: how many subscriptions have a Fable allowance, how many can take
+ * Fable now, and the share left across those with a reading. Null when none reports Fable.
+ */
+export function fableSummary(
+  profiles: readonly ProfileStatus[],
+  now: EpochMs,
+): { withFable: number; canTake: number; left: number | null } | null {
+  const lefts = profiles
+    .filter((p) => p.fable !== undefined && p.fable !== null)
+    .map((p) => fableLeft(p, now))
+  if (lefts.length === 0) return null
+  const known = lefts.filter((l): l is number => l !== null)
+  return {
+    withFable: lefts.length,
+    canTake: known.filter((l) => l > 0).length,
+    left: known.length === 0 ? null : known.reduce((sum, l) => sum + l, 0) / known.length,
+  }
+}

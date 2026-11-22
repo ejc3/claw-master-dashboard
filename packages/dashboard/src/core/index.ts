@@ -62,6 +62,8 @@ export {
   ACCEPTED_RECENTLY_MS,
   type Blocked,
   blocked,
+  fableLeft,
+  fableSummary,
   fiveHourAt,
   fiveHourLeft,
   forecastProfiles,

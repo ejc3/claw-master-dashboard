@@ -8,6 +8,7 @@ import {
   type AlarmStatus,
   type Band,
   type EpochMs,
+  type FableAllowance,
   FIVE_HOURS_MS,
   type LatencyQuantiles,
   type MetricsSource,
@@ -162,6 +163,24 @@ export const SNAPSHOT_LOOKBACK_MS = 15 * 60_000
  * does; the last reading holds until its window resets, at most five hours on.
  */
 export const FIVE_HOUR_LOOKBACK_MS = FIVE_HOURS_MS
+
+/**
+ * The weekly Fable allowance from its three gauges, each the latest [time, value]; null when the
+ * subscription reports no Fable figure at all. A countdown is turned into a time from when it was
+ * read; one of zero or less means no reset is known, or no refusal is in force.
+ */
+export function fableAllowance(
+  used: [EpochMs, number] | null,
+  resets: [EpochMs, number] | null,
+  refused: [EpochMs, number] | null,
+): FableAllowance | null {
+  if (used === null) return null
+  return {
+    usedFraction: Math.min(1, Math.max(0, used[1])),
+    resetsAt: resets === null || resets[1] <= 0 ? null : resets[0] + resets[1] * 1000,
+    refusedUntil: refused === null || refused[1] <= 0 ? null : refused[0] + refused[1] * 1000,
+  }
+}
 
 /**
  * The 5-hour window as last read, with its reset time even when that has passed: whoever reads
@@ -471,6 +490,9 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         connections,
         verdicts,
         info,
+        fableUsed,
+        fableResets,
+        fableRefused,
       ] = await Promise.all([
         read(gauge('MAX', 'quota.used_fraction', ['profile'])),
         read(gauge('MAX', 'quota.resets_in_seconds', ['profile'])),
@@ -504,6 +526,10 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         ),
         // Which account each profile is logged in to (exported by claw-master releases that have it).
         read(gauge('MAX', 'profile.info', ['profile', 'email'])),
+        // Each subscription's weekly Fable allowance (claw-master releases that have it).
+        read(gauge('MAX', 'quota.fable.used_fraction', ['profile'])),
+        read(gauge('MAX', 'quota.fable.resets_in_seconds', ['profile'])),
+        read(gauge('MAX', 'quota.fable.rate_limited_for_seconds', ['profile'])),
       ])
       const byLabel = (results: InsightsResult[]) => new Map(results.map((r) => [r.label, r]))
       const resetsBy = byLabel(resets)
@@ -512,6 +538,9 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
       const polledFiveUsedBy = byLabel(polledFiveUsed)
       const polledFiveResetsBy = byLabel(polledFiveResets)
       const tokensBy = byLabel(tokens)
+      const fableUsedBy = byLabel(fableUsed)
+      const fableResetsBy = byLabel(fableResets)
+      const fableRefusedBy = byLabel(fableRefused)
       // Two-dimension groups: "<profile> <quantile>" and "<profile> <measure>".
       const quantilesBy = new Map<string, Partial<Record<string, number>>>()
       for (const result of quantiles) {
@@ -601,6 +630,12 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
             latencyMs,
             acceptedAt: acceptedBy.get(profile) ?? null,
             email: emailBy.get(profile)?.email ?? null,
+            // Not through at(): a Fable reading says nothing of how new the snapshot is.
+            fable: fableAllowance(
+              latest(fableUsedBy.get(profile)),
+              latest(fableResetsBy.get(profile)),
+              latest(fableRefusedBy.get(profile)),
+            ),
           }
         })
         .sort((a, b) => a.profile.localeCompare(b.profile))

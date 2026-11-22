@@ -7,6 +7,7 @@ import {
   DEFAULT_CACHE_MS,
   DEFAULT_THROTTLE_RETRIES_MS,
   FIVE_HOUR_LOOKBACK_MS,
+  fableAllowance,
   fiveHourWindow,
   foldAliases,
   gaugeQuery,
@@ -93,6 +94,8 @@ function snapshotAnswers(): Answer {
     const results = (() => {
       // The usage poll's 5-hour gauges (none here: the header readings stand).
       if (expression.includes('quota.five_hour.')) return []
+      // The Fable gauges (none here: no subscription reports a Fable allowance).
+      if (expression.includes('quota.fable.')) return []
       if (expression.includes('quota.used_fraction'))
         return [
           result('alpha', [
@@ -326,7 +329,7 @@ describe('createCloudWatchSource', () => {
     const { src, requests } = source(snapshotAnswers())
     const snapshot = await src.snapshot()
     const latest = t0 + 9 * 60_000
-    expect(requests).toHaveLength(13)
+    expect(requests).toHaveLength(16)
     const expressions = requests.map((r) => r.expression)
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
@@ -451,6 +454,44 @@ describe('createCloudWatchSource', () => {
     expect(email('alpha')).toBe('new@example.com')
     // None reported: null, not a guess.
     expect(email('bravo')).toBeNull()
+  })
+
+  it("reads each subscription's weekly Fable allowance, and none for a seat without it", async () => {
+    const latest = t0 + 9 * 60_000
+    const answers = snapshotAnswers()
+    const reading = (value: number) => ({
+      MetricDataResults: [result('alpha', [[latest, value]])],
+      Messages: [],
+    })
+    const { src, requests } = source((body, expression) => {
+      if (expression.includes('quota.fable.used_fraction')) return reading(1)
+      if (expression.includes('quota.fable.resets_in_seconds')) return reading(7200)
+      if (expression.includes('quota.fable.rate_limited_for_seconds')) return reading(1800)
+      return answers(body, expression)
+    })
+    const snapshot = await src.snapshot()
+    for (const metric of ['used_fraction', 'resets_in_seconds', 'rate_limited_for_seconds']) {
+      expect(requests.map((r) => r.expression)).toContain(
+        `SELECT MAX("claw_master.quota.fable.${metric}") FROM "ClawMaster" GROUP BY profile`,
+      )
+    }
+    const fable = (name: string) => snapshot.profiles.find((p) => p.profile === name)?.fable
+    expect(fable('alpha')).toEqual({
+      usedFraction: 1,
+      resetsAt: latest + 7200_000,
+      refusedUntil: latest + 1800_000,
+    })
+    // No Fable reading: null, not a guess.
+    expect(fable('bravo')).toBeNull()
+  })
+
+  it('reads a Fable countdown of zero as no reset known and no refusal in force', () => {
+    expect(fableAllowance([NOW, 0.2], [NOW, 0], [NOW, 0])).toEqual({
+      usedFraction: 0.2,
+      resetsAt: null,
+      refusedUntil: null,
+    })
+    expect(fableAllowance(null, [NOW, 60], [NOW, 60])).toBeNull()
   })
 
   it('includes installed subscriptions without usage, and ignores empty band and request-only series', async () => {

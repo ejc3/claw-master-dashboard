@@ -14,6 +14,22 @@ export interface QuotaWindow {
   lengthMs: number
 }
 
+/**
+ * A subscription's weekly Fable allowance. On Max and Ultra, Fable models may use up to half of the
+ * weekly limit, metered on their own; Fable also counts toward the weekly limit itself.
+ */
+export interface FableAllowance {
+  /** Share of the Fable allowance used, 0 to 1; null when there is no reading. */
+  usedFraction: number | null
+  /** When the Fable allowance resets; null when unknown. */
+  resetsAt: EpochMs | null
+  /**
+   * Until when Anthropic refuses this subscription Fable (its allowance is used up), so claw-master
+   * sends Fable requests to other subscriptions; null when it does not. Other models are unaffected.
+   */
+  refusedUntil: EpochMs | null
+}
+
 export interface LatencyQuantiles {
   p50: number | null
   p95: number | null
@@ -44,6 +60,12 @@ export interface ProfileStatus {
    * null when not reported; absent when the source cannot tell.
    */
   email?: string | null
+  /**
+   * The weekly Fable allowance (claw_master.quota.fable.*); null when the subscription reports
+   * none (a seat without Fable in its plan, or a claw-master release before it); absent when the
+   * source cannot tell.
+   */
+  fable?: FableAllowance | null
 }
 
 /** Everything the dashboard shows as "now". */
