@@ -87,7 +87,12 @@ describe('Token wiring', () => {
   })
 
   it('counts models in tokens with requests to fall back on, and shows a failed token query as an error', () => {
-    expect(queries).toMatch(/dimension: 'model',[^}]*tokens: true,\s+requests: true/s)
+    expect(queries).toMatch(
+      /dimension: 'model',[^}]*tokens: true,\s+requests: true,\s+tokensOnceFull: true/s,
+    )
+    // Models switch to tokens only once the counts cover the whole range: requests until then.
+    expect(breakdown).toMatch(/!\(split\.tokensOnceFull === true && coverage === 'partial'\)/)
+    expect(breakdown).toMatch(/showing requests until they cover it/)
     // Projects count tokens only: no requests fallback to ask for.
     expect(queries).toMatch(/dimension: 'project',[^}]*tokens: true,\s+requests: false/s)
     expect(breakdown).toMatch(/tokensPending \|\| tokenError !== null \? \[\] : requestRows/)

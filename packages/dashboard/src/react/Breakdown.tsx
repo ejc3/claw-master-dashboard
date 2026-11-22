@@ -132,7 +132,11 @@ export function Breakdown(props: {
   const typeFailure = tokens.loaded.state === 'error' ? tokens.loaded : undefined
   const firstAt = tokens.firstAt
   const coverage = typesReady ? tokenCoverage(firstAt, props.range, props.stepSeconds) : null
-  const showTokens = split.tokens && coverage !== null && coverage !== 'none'
+  const showTokens =
+    split.tokens &&
+    coverage !== null &&
+    coverage !== 'none' &&
+    !(split.tokensOnceFull === true && coverage === 'partial')
 
   // Worked out again only when an answer or a choice changes, not on every tick of the clock.
   const tokenData = tokens.loaded.state === 'ready' ? tokens.loaded.data : null
@@ -192,7 +196,9 @@ export function Breakdown(props: {
       ? split.requests
         ? 'No token counts for this range yet; showing requests.'
         : `No token counts by ${split.noun} yet: claw-master releases that count them send them.`
-      : null
+      : split.tokensOnceFull === true && coverage === 'partial'
+        ? `Token counts by ${split.noun} start partway through this range; showing requests until they cover it.`
+        : null
   const loading = tokensPending || (!showTokens && split.requests && requests.state === 'loading')
   const requestsFailure =
     !showTokens && tokenError === null && requests.state === 'error' ? requests.failure : null
