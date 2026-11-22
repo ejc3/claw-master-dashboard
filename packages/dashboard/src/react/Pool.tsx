@@ -117,7 +117,7 @@ function WeekMeter(props: {
   )
 }
 
-const RING_R = 5.5
+const RING_R = 7
 const RING_C = 2 * Math.PI * RING_R
 
 /**
@@ -130,7 +130,7 @@ function FiveRing(props: { used: number | null; dim: boolean; color: string }) {
   return (
     <svg
       className="cmd-ring"
-      viewBox="0 0 16 16"
+      viewBox="0 0 20 20"
       data-window="fiveHour"
       data-level={levelOf(used)}
       data-left={pct(left ?? 0)}
@@ -138,15 +138,15 @@ function FiveRing(props: { used: number | null; dim: boolean; color: string }) {
       style={{ '--cmd-account-fill': props.color } as CSSProperties}
       aria-hidden="true"
     >
-      <circle className="cmd-ring-track" cx="8" cy="8" r={RING_R} />
+      <circle className="cmd-ring-track" cx="10" cy="10" r={RING_R} />
       {left !== null && left > 0 && (
         <circle
           className="cmd-ring-left"
-          cx="8"
-          cy="8"
+          cx="10"
+          cy="10"
           r={RING_R}
           strokeDasharray={`${(left * RING_C).toFixed(2)} ${RING_C.toFixed(2)}`}
-          transform="rotate(-90 8 8)"
+          transform="rotate(-90 10 10)"
         />
       )}
     </svg>
@@ -352,8 +352,8 @@ export function orderByLeft(profiles: ProfileStatus[], now: EpochMs): ProfileSta
 }
 
 /**
- * Each subscription's weekly and 5-hour use, as two tiny bars, and whether it can take work.
- * Hovering (with a mouse) or tapping one shows its detail below the row: when each limit resets,
+ * Each subscription's weekly use (a bar, with a line where Fable's reach ends) and 5-hour use (a ring),
+ * and whether it can take work. Hovering (with a mouse) or tapping one shows its detail below it: when each limit resets,
  * with a link to put that in a calendar. A mouse leaving the subscriptions, a tap anywhere else, or
  * Escape closes it.
  */
@@ -368,6 +368,13 @@ export function PoolAccounts(props: {
   const names = shortNames(props.profiles.map((p) => p.profile))
   const colors = props.colors ?? accountColors(props.profiles.map((p) => p.profile))
   const [open, setOpen] = useState<string | null>(null)
+  // Where the open subscription's cell ends, so a floating detail sits right under it (wide screens).
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null)
+  const openFrom = (profile: string, target: HTMLElement, toggle: boolean) => {
+    const cell = target.parentElement
+    if (cell !== null) setAnchor({ x: cell.offsetLeft, y: cell.offsetTop + cell.offsetHeight })
+    setOpen((o) => (toggle && o === profile ? null : profile))
+  }
   const returned = useReturned(
     new Map(props.profiles.map((p) => [p.profile, hasHeadroom(p, props.now)])),
   )
@@ -424,9 +431,9 @@ export function PoolAccounts(props: {
                 type="button"
                 aria-expanded={open === p.profile}
                 aria-controls="cmd-account-detail"
-                onClick={() => setOpen((o) => (o === p.profile ? null : p.profile))}
+                onClick={(event) => openFrom(p.profile, event.currentTarget, true)}
                 onPointerEnter={(event) => {
-                  if (event.pointerType === 'mouse') setOpen(p.profile)
+                  if (event.pointerType === 'mouse') openFrom(p.profile, event.currentTarget, false)
                 }}
               >
                 <span className="cmd-account-name">{names.get(p.profile)}</span>
@@ -462,10 +469,22 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''} · ring: 5 hours`}
+        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''} · ring: 5 hours left`}
       </p>
       {shown !== null && (
-        <div id="cmd-account-detail" className="cmd-account-detail" role="status">
+        <div
+          id="cmd-account-detail"
+          className="cmd-account-detail"
+          role="status"
+          style={
+            anchor === null
+              ? undefined
+              : ({
+                  '--cmd-detail-x': `${anchor.x}px`,
+                  '--cmd-detail-y': `${anchor.y}px`,
+                } as CSSProperties)
+          }
+        >
           <p>
             <b>{shown.profile}</b> · {availability(shown, props.now)}
           </p>

@@ -753,11 +753,11 @@ describe('the account bars', () => {
     // No key among the bars: one line under them says which is which.
     expect(container.querySelector('.cmd-accounts-key')).toBeNull()
     expect(container.querySelector('.cmd-accounts-legend')?.textContent?.trim()).toBe(
-      'Bar: week left · ring: 5 hours',
+      'Bar: week left · ring: 5 hours left',
     )
     const levels = (e: Element) =>
       [...e.querySelectorAll('[data-window]')].map((b) => b.getAttribute('data-level'))
-    // The 5-hour bar shows what the window really leaves: nothing for bravo (its week is used up)
+    // The 5-hour ring shows what the window really leaves: nothing for bravo (its week is used up)
     // or charlie (refused), and no more than delta's week although its window has reset.
     expect(items.map(levels)).toEqual([
       ['ok', 'high'],
@@ -779,6 +779,14 @@ describe('the account bars', () => {
       '48%',
     )
     expect(items[1]?.querySelector('.cmd-meter-week')).toBeNull()
+    // The ring draws that arc from 12 o'clock, clockwise: alpha's 4% of a circle of radius 7; none for
+    // a window with nothing left.
+    const arc = (e: Element | undefined) => e?.querySelector('.cmd-ring-left')
+    expect(arc(items[0])?.getAttribute('stroke-dasharray')).toBe(
+      `${(0.04 * 2 * Math.PI * 7).toFixed(2)} ${(2 * Math.PI * 7).toFixed(2)}`,
+    )
+    expect(arc(items[0])?.getAttribute('transform')).toBe('rotate(-90 10 10)')
+    expect(arc(items[1])).toBeNull()
     // Read out in full for a screen reader.
     expect(items[0]?.textContent).toContain('alpha: week 48% left, 5-hour 4.0% left')
     expect(items[1]?.textContent).toContain('bravo: week 0% left, 5-hour 0% left')

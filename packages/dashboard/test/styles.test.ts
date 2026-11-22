@@ -88,6 +88,16 @@ describe('dashboard.css', () => {
     expect(rule?.[1]).toMatch(/color:\s*var\(--cmd-accent-strong\)/)
   })
 
+  it("keeps Fable's line and the 5-hour ring visible in forced colors", () => {
+    const forced = rules(block('  @media (forced-colors: active)'))
+    const body = (selector: string) => forced.find(([s]) => s === selector)?.[1] ?? ''
+    // The line crosses a CanvasText fill, so it takes another system color.
+    expect(body('.cmd-meter-fable')).toMatch(/background:\s*Highlight/)
+    expect(body('.cmd-ring-left')).toMatch(/stroke:\s*CanvasText/)
+    expect(body('.cmd-ring-track')).toMatch(/stroke:\s*GrayText/)
+    expect(body('.cmd-ring[data-level="unknown"] .cmd-ring-track')).toMatch(/stroke:\s*CanvasText/)
+  })
+
   it('draws a bar with no reading dashed in forced colors, unlike a 0% one', () => {
     const forced = block('  @media (forced-colors: active)')
     expect(forced).toMatch(/\.cmd-meter\[data-level="unknown"\]\s*\{[^}]*border-style:\s*dashed/)
@@ -98,11 +108,13 @@ describe('the subscription detail', () => {
   it('floats over the charts on a wide screen, so hovering a subscription moves nothing', () => {
     // In the flow it grew the vertically centered block: the row moved 14px under the pointer and the
     // charts below moved down on every hover.
-    const wide = rules(block('  @media (min-width: 720px) {\n    .cmd-pool-head'))
+    const wide = rules(block('  @media (min-width: 720px) {\n    .cmd-accounts {'))
     const body = (selector: string) => wide.find(([s]) => s === selector)?.[1] ?? ''
     expect(body('.cmd-accounts')).toMatch(/position:\s*relative/)
     expect(body('.cmd-account-detail')).toMatch(/position:\s*absolute/)
-    expect(body('.cmd-account-detail')).toMatch(/top:\s*100%/)
+    // Right under the subscription it details, from where the page measured its cell.
+    expect(body('.cmd-account-detail')).toMatch(/top:\s*var\(--cmd-detail-y, 100%\)/)
+    expect(body('.cmd-account-detail')).toMatch(/left:\s*clamp\(0px, var\(--cmd-detail-x, 0px\)/)
     // No gap below the block for a mouse to cross on its way to a calendar link (a gap closed it).
     expect(body('.cmd-account-detail')).toMatch(/margin-top:\s*0/)
   })
