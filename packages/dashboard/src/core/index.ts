@@ -62,6 +62,8 @@ export {
   ACCEPTED_RECENTLY_MS,
   type Blocked,
   blocked,
+  FABLE_SHARE_OF_WEEK,
+  fableAt,
   fableLeft,
   fableSummary,
   fiveHourAt,

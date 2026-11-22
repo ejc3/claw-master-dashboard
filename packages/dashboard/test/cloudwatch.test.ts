@@ -491,7 +491,13 @@ describe('createCloudWatchSource', () => {
       resetsAt: null,
       refusedUntil: null,
     })
-    expect(fableAllowance(null, [NOW, 60], [NOW, 60])).toBeNull()
+    expect(fableAllowance(null, [NOW, 60], [NOW, 0])).toBeNull()
+    // Refused before any reading: the refusal is kept.
+    expect(fableAllowance(null, null, [NOW, 60])).toEqual({
+      usedFraction: null,
+      resetsAt: null,
+      refusedUntil: NOW + 60_000,
+    })
   })
 
   it('includes installed subscriptions without usage, and ignores empty band and request-only series', async () => {

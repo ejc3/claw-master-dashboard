@@ -6,6 +6,7 @@ import {
   type CapacityAdvice,
   COVERAGE_TARGET,
   type EpochMs,
+  fableAt,
   fableLeft,
   fableSummary,
   fiveHourAt,
@@ -401,10 +402,7 @@ export function PoolAccounts(props: {
               <WindowDetail
                 name="Fable"
                 who={shown.profile}
-                window={{
-                  usedFraction: shown.fable.usedFraction,
-                  resetsAt: shown.fable.resetsAt,
-                }}
+                window={fableAt(shown.fable, props.now)}
                 now={props.now}
               />
             )}

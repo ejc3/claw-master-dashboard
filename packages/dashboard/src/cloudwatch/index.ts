@@ -166,19 +166,21 @@ export const FIVE_HOUR_LOOKBACK_MS = FIVE_HOURS_MS
 
 /**
  * The weekly Fable allowance from its three gauges, each the latest [time, value]; null when the
- * subscription reports no Fable figure at all. A countdown is turned into a time from when it was
- * read; one of zero or less means no reset is known, or no refusal is in force.
+ * subscription reports neither a Fable figure nor a refusal. A countdown is turned into a time from
+ * when it was read; one of zero or less means no reset is known, or no refusal is in force. A
+ * refusal with no figure yet (refused before the first reading) is kept, with no figure.
  */
 export function fableAllowance(
   used: [EpochMs, number] | null,
   resets: [EpochMs, number] | null,
   refused: [EpochMs, number] | null,
 ): FableAllowance | null {
-  if (used === null) return null
+  const refusedUntil = refused === null || refused[1] <= 0 ? null : refused[0] + refused[1] * 1000
+  if (used === null && refusedUntil === null) return null
   return {
-    usedFraction: Math.min(1, Math.max(0, used[1])),
+    usedFraction: used === null ? null : Math.min(1, Math.max(0, used[1])),
     resetsAt: resets === null || resets[1] <= 0 ? null : resets[0] + resets[1] * 1000,
-    refusedUntil: refused === null || refused[1] <= 0 ? null : refused[0] + refused[1] * 1000,
+    refusedUntil,
   }
 }
 
