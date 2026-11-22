@@ -469,9 +469,13 @@
     outline-offset: -1px;
   }
 
-  /* A limit the subscription does not have (no 5-hour limit): the bar shows the week's room, dimmed. */
-  .cmd-account-bar[data-dim] {
-    opacity: 0.4;
+  /* The weekly bar's Fable line: below it is the share of the week Fable could still use. */
+  .cmd-fable-mark {
+    position: absolute;
+    inset-inline: 0;
+    height: 2px;
+    margin-bottom: -1px;
+    background: var(--cmd-ink);
   }
 
   @media (min-width: 720px) {
