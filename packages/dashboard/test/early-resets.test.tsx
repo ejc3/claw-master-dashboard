@@ -142,7 +142,7 @@ const sub = (profile: string): ProfileStatus => ({
   latencyMs: { p50: null, p95: null, p99: null },
 })
 
-describe('the early-reset badges', () => {
+describe('the banked-reset badges', () => {
   it('count a red week and a blue Fable beside the name of a subscription that is out, say them, and list them in the detail', () => {
     const container = document.createElement('div')
     document.body.append(container)
@@ -152,21 +152,22 @@ describe('the early-reset badges', () => {
       root.render(
         <PoolAccounts
           profiles={[
-            { ...sub('team-gift'), rateLimitedUntil: NOW + 30 * 60_000 },
-            sub('team-plain'),
-            sub('team-open'),
+            {
+              ...sub('team-gift'),
+              rateLimitedUntil: NOW + 30 * 60_000,
+              bankedResets: { weekly: 2, fable: 1 },
+            },
+            // Out, its resets used: no badge.
+            {
+              ...sub('team-plain'),
+              rateLimitedUntil: NOW + 30 * 60_000,
+              bankedResets: { weekly: 0, fable: 0 },
+            },
+            // Available: its banked reset is in its detail, not on its cell.
+            { ...sub('team-open'), bankedResets: { weekly: 1, fable: 0 } },
           ]}
           now={NOW}
-          earlyResets={
-            new Map([
-              [
-                'team-gift',
-                { weekly: [NOW - 2 * HOUR_MS, NOW - 30 * HOUR_MS], fable: [NOW - 5 * HOUR_MS] },
-              ],
-              // Available: its resets are in its detail, not on its cell.
-              ['team-open', { weekly: [NOW - 3 * HOUR_MS], fable: [] }],
-            ])
-          }
+          earlyResets={new Map([['team-gift', { weekly: [NOW - 2 * HOUR_MS], fable: [] }]])}
         />,
       ),
     )
@@ -187,18 +188,41 @@ describe('the early-reset badges', () => {
     const open = cells.find((c) => c.textContent?.includes('open')) as HTMLElement
     expect(open.querySelector('.cmd-reset-badges')).toBeNull()
     expect(gift.querySelector('.cmd-visually-hidden')?.textContent).toContain(
-      'week reset early twice, Fable reset early once this past week',
+      '2 resets banked for the week, 1 reset banked for Fable',
     )
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toContain(
-      'badge: reset early this past week (red: week, blue: Fable)',
+      'badge: resets banked (red: week, blue: Fable)',
     )
     act(() => (gift.querySelector('button') as HTMLButtonElement).click())
-    const lines = [...container.querySelectorAll('.cmd-reset-line')].map((l) => [
+    const banked = [...container.querySelectorAll('.cmd-banked-line')].map((l) => [
       l.getAttribute('data-window'),
       l.textContent,
     ])
-    expect(lines.map(([w]) => w)).toEqual(['weekly', 'fable'])
-    expect(lines[0]?.[1]).toMatch(/^Week reset early by Anthropic twice this past week: .+, .+$/)
-    expect(lines[1]?.[1]).toMatch(/^Fable reset early by Anthropic once this past week: .+$/)
+    expect(banked).toEqual([
+      ['weekly', '2 resets banked: claiming one clears the week now'],
+      ['fable', "1 reset banked: claiming one clears Fable's allowance now"],
+    ])
+    // The reset used this past week is history, without saying who reset it.
+    const used = [...container.querySelectorAll('.cmd-reset-line')].map((l) => l.textContent)
+    expect(used).toHaveLength(1)
+    expect(used[0]).toMatch(/^Week reset early once this past week: .+$/)
+  })
+
+  it('leave the legend alone when no subscription that is out has one banked', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[{ ...sub('team-open'), bankedResets: { weekly: 1, fable: 1 } }]}
+          now={NOW}
+          earlyResets={new Map([['team-open', { weekly: [NOW - 2 * HOUR_MS], fable: [] }]])}
+        />,
+      ),
+    )
+    expect(container.querySelector('.cmd-reset-badges')).toBeNull()
+    expect(container.querySelector('.cmd-accounts-legend')?.textContent).not.toContain('badge')
   })
 })

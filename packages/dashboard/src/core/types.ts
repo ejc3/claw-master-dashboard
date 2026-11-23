@@ -72,6 +72,18 @@ export interface ProfileStatus {
    * cannot tell.
    */
   reserveFraction?: number | null
+  /**
+   * The resets the account has banked: grants its owner may claim to clear the week, or Fable's
+   * allowance, early (claw_master.quota.{weekly,fable}.resets_left); null when not reported; absent
+   * when the source cannot tell.
+   */
+  bankedResets?: BankedResets | null
+}
+
+/** Banked resets per limit they clear: the week, and Fable's weekly allowance. */
+export interface BankedResets {
+  weekly: number
+  fable: number
 }
 
 /** Everything the dashboard shows as "now". */

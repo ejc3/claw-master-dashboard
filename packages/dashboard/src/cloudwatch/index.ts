@@ -7,6 +7,7 @@ import { validateSeriesQuery } from '../core/query'
 import {
   type AlarmStatus,
   type Band,
+  type BankedResets,
   type EpochMs,
   type FableAllowance,
   FIVE_HOURS_MS,
@@ -269,6 +270,17 @@ export function bandFromGauge(value: number | null): Band {
 }
 
 /** The newest reading of a group, as [bucket start, value]; null with no points. */
+/** The banked resets from their gauges: null when neither is reported. */
+export function bankedResets(
+  weekly: [EpochMs, number] | null,
+  fable: [EpochMs, number] | null,
+): BankedResets | null {
+  if (weekly === null && fable === null) return null
+  const count = (r: [EpochMs, number] | null) =>
+    r === null || !Number.isFinite(r[1]) ? 0 : Math.max(0, Math.round(r[1]))
+  return { weekly: count(weekly), fable: count(fable) }
+}
+
 /** A reserve's share of the week from its gauge: null for none (no reading, or zero). */
 export function reserveShare(reading: [EpochMs, number] | null): number | null {
   if (reading === null || !Number.isFinite(reading[1]) || reading[1] <= 0) return null
@@ -502,6 +514,8 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         fableResets,
         fableRefused,
         reserveShares,
+        weeklyBanked,
+        fableBanked,
       ] = await Promise.all([
         read(gauge('MAX', 'quota.used_fraction', ['profile'])),
         read(gauge('MAX', 'quota.resets_in_seconds', ['profile'])),
@@ -541,6 +555,9 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         read(gauge('MAX', 'quota.fable.rate_limited_for_seconds', ['profile'])),
         // How much of each week the owner's reserve holds back (claw-master releases that have it).
         read(gauge('MAX', 'quota.reserve_fraction', ['profile'])),
+        // The resets each account has banked (claw-master releases that have them).
+        read(gauge('MAX', 'quota.weekly.resets_left', ['profile'])),
+        read(gauge('MAX', 'quota.fable.resets_left', ['profile'])),
       ])
       const byLabel = (results: InsightsResult[]) => new Map(results.map((r) => [r.label, r]))
       const resetsBy = byLabel(resets)
@@ -553,6 +570,8 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
       const fableResetsBy = byLabel(fableResets)
       const fableRefusedBy = byLabel(fableRefused)
       const reserveBy = byLabel(reserveShares)
+      const weeklyBankedBy = byLabel(weeklyBanked)
+      const fableBankedBy = byLabel(fableBanked)
       // Two-dimension groups: "<profile> <quantile>" and "<profile> <measure>".
       const quantilesBy = new Map<string, Partial<Record<string, number>>>()
       for (const result of quantiles) {
@@ -649,6 +668,10 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
               latest(fableRefusedBy.get(profile)),
             ),
             reserveFraction: reserveShare(latest(reserveBy.get(profile))),
+            bankedResets: bankedResets(
+              latest(weeklyBankedBy.get(profile)),
+              latest(fableBankedBy.get(profile)),
+            ),
           }
         })
         .sort((a, b) => a.profile.localeCompare(b.profile))

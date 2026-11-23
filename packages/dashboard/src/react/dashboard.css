@@ -1523,7 +1523,7 @@
     }
   }
 
-  /* The name and, raised after it like a superscript, any early-reset badges: the name gives way,
+  /* The name and, raised after it like a superscript, any banked-reset badges: the name gives way,
      the badges never do. */
   .cmd-account-label {
     display: flex;
@@ -1555,13 +1555,15 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Each badge and reset line colors itself through one property, so forced colors can override it. */
+  /* Each badge and detail line colors itself through one property, so forced colors can override it. */
   .cmd-reset-badge,
+  .cmd-banked-line,
   .cmd-reset-line {
     --cmd-reset-mark: var(--cmd-reset-week);
   }
 
   .cmd-reset-badge[data-window="fable"],
+  .cmd-banked-line[data-window="fable"],
   .cmd-reset-line[data-window="fable"] {
     --cmd-reset-mark: var(--cmd-reset-fable);
   }
@@ -1576,16 +1578,24 @@
     stroke-linejoin: round;
   }
 
-  /* The detail's reset lines carry the badge's color as a small mark. */
+  /* The detail's lines carry the badge's color as a small mark: filled for a reset still banked,
+     a ring for one used this past week. */
+  .cmd-banked-line::before,
   .cmd-reset-line::before {
     content: "";
     display: inline-block;
+    box-sizing: border-box;
     width: 6px;
     height: 6px;
     margin-right: 6px;
     border-radius: 50%;
     background: var(--cmd-reset-mark);
     vertical-align: 0.1em;
+  }
+
+  .cmd-reset-line::before {
+    border: 1.5px solid var(--cmd-reset-mark);
+    background: none;
   }
 
   @media (forced-colors: active) {
@@ -1598,6 +1608,10 @@
     .cmd-reset-badge[data-window="fable"] {
       border-color: Highlight;
       color: Highlight;
+    }
+
+    .cmd-banked-line::before {
+      background: CanvasText;
     }
 
     .cmd-reset-line::before {
