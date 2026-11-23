@@ -191,7 +191,12 @@ export function readingsQuery(
  */
 export function historyQuery(
   now: EpochMs,
-  metric: 'weeklyUsed' | 'weeklyResetsInSeconds' | 'fiveHourUsed',
+  metric:
+    | 'weeklyUsed'
+    | 'weeklyResetsInSeconds'
+    | 'fiveHourUsed'
+    | 'fableUsed'
+    | 'fableResetsInSeconds',
 ): SeriesQuery {
   return {
     metric,

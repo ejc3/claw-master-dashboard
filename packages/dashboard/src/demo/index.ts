@@ -85,6 +85,9 @@ interface DemoProfile {
   /** The weekly Fable allowance used, and how long Anthropic still refuses Fable; null: no Fable. */
   fableUsed: number | null
   fableRefusedMs?: number
+  /** How long ago Anthropic reset its week, or its Fable allowance alone, before it was due. */
+  weeklyEarlyResetAgoMs?: number
+  fableEarlyResetAgoMs?: number
   /** How long ago the subscription joined the pool: it has no weekly reading before then. */
   joinedAgoMs?: number
 }
@@ -127,6 +130,7 @@ const PROFILES: readonly DemoProfile[] = [
     tokenLeftMs: 7 * HOUR_MS,
     latencyScale: 0.9,
     fableUsed: 0.6,
+    fableEarlyResetAgoMs: 20 * HOUR_MS,
   },
   {
     name: 'delta',
@@ -200,6 +204,24 @@ function usedAt(
   const start = resetAt - lengthMs
   if (t >= start) return Math.min(used, (used * (t - start)) / Math.max(1, now - start))
   return (0.9 * mod(t - start, lengthMs)) / lengthMs
+}
+
+/**
+ * usedAt, for a window Anthropic reset early `earlyAgoMs` ago: rising to nearly full until then,
+ * and from nothing to `used` since.
+ */
+function usedAfterEarlyReset(
+  used: number,
+  resetAt: EpochMs,
+  lengthMs: number,
+  now: EpochMs,
+  t: EpochMs,
+  earlyAgoMs: number | undefined,
+): number {
+  if (earlyAgoMs === undefined) return usedAt(used, resetAt, lengthMs, now, t)
+  const early = now - earlyAgoMs
+  if (t >= early) return Math.min(used, (used * (t - early)) / Math.max(1, now - early))
+  return usedAt(0.96, early, early - (resetAt - lengthMs), early, t)
 }
 
 const mod = (a: number, n: number) => ((a % n) + n) % n
@@ -293,6 +315,24 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
         )
         return groupBy !== undefined ? values : [reduce('MAX', values)]
       }
+      case 'fableUsed':
+      case 'fableResetsInSeconds': {
+        const values = PROFILES.map((p) => {
+          if (p.fableUsed === null || (p.joinedAgoMs !== undefined && m < now - p.joinedAgoMs))
+            return Number.NaN
+          if (metric === 'fableResetsInSeconds')
+            return mod(now + p.weeklyResetsInMs - m, WEEK_MS) / 1000
+          return usedAfterEarlyReset(
+            p.fableUsed,
+            now + p.weeklyResetsInMs,
+            WEEK_MS,
+            now,
+            m,
+            p.fableEarlyResetAgoMs ?? p.weeklyEarlyResetAgoMs,
+          )
+        })
+        return groupBy !== undefined ? values : [reduce('MAX', values)]
+      }
       case 'quotaBand':
       case 'weeklyUsed':
       case 'weeklyResetsInSeconds':
@@ -307,7 +347,14 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
           if (metric === 'quotaBand')
             return { unknown: -1, ok: 0, reserve: 1, exhausted: 2 }[p.band]
           if (metric === 'weeklyUsed')
-            return usedAt(p.weeklyUsed, now + p.weeklyResetsInMs, WEEK_MS, now, m)
+            return usedAfterEarlyReset(
+              p.weeklyUsed,
+              now + p.weeklyResetsInMs,
+              WEEK_MS,
+              now,
+              m,
+              p.weeklyEarlyResetAgoMs,
+            )
           if (metric === 'weeklyResetsInSeconds')
             return mod(now + p.weeklyResetsInMs - m, WEEK_MS) / 1000
           return (

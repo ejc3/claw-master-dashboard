@@ -15,6 +15,7 @@ import {
   type CapacityAdvice,
   COVERAGE_TARGET,
   calendarIcs,
+  type EarlyResets,
   type EpochMs,
   FABLE_SHARE_OF_WEEK,
   fableAt,
@@ -282,6 +283,72 @@ function WindowDetail(props: {
   )
 }
 
+const times = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`)
+
+/**
+ * A subscription's early resets this past week as small counted badges beside its name: red for
+ * its week, blue for its Fable allowance alone. Nothing when there were none.
+ */
+function ResetBadges(props: { resets: EarlyResets | undefined }) {
+  const r = props.resets
+  if (r === undefined || (r.weekly.length === 0 && r.fable.length === 0)) return null
+  const badge = (window: 'weekly' | 'fable', count: number, what: string) =>
+    count === 0 ? null : (
+      <span
+        className="cmd-reset-badge"
+        data-window={window}
+        title={`Anthropic reset its ${what} early ${times(count)} this past week`}
+      >
+        <svg viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M8.2 5.6A3.3 3.3 0 1 1 7.1 2.6" />
+          <path d="M7.6 0.9 7.3 2.8 5.4 2.5" />
+        </svg>
+        {count}
+      </span>
+    )
+  return (
+    <span className="cmd-reset-badges" aria-hidden="true">
+      {badge('weekly', r.weekly.length, 'week')}
+      {badge('fable', r.fable.length, 'Fable allowance')}
+    </span>
+  )
+}
+
+/** The early resets, for a screen reader's reading of the cell. */
+function earlyResetsSaid(r: EarlyResets | undefined): string {
+  if (r === undefined) return ''
+  const parts = [
+    r.weekly.length > 0 ? `week reset early ${times(r.weekly.length)}` : '',
+    r.fable.length > 0 ? `Fable reset early ${times(r.fable.length)}` : '',
+  ].filter((part) => part !== '')
+  return parts.length === 0 ? '' : `, ${parts.join(', ')} this past week`
+}
+
+/** The detail's lines for the early resets: when Anthropic gave the week or Fable back. */
+function EarlyResetDetail(props: { resets: EarlyResets | undefined; now: EpochMs }) {
+  const when = useWhen()
+  const r = props.resets
+  if (r === undefined) return null
+  const at = (list: EpochMs[]) =>
+    list
+      .map((t) => (when === null ? `${formatCountdown(props.now - t)} ago` : when(t, props.now)))
+      .join(', ')
+  return (
+    <>
+      {r.weekly.length > 0 && (
+        <li className="cmd-reset-line" data-window="weekly">
+          {`Week reset early by Anthropic ${times(r.weekly.length)} this past week: ${at(r.weekly)}`}
+        </li>
+      )}
+      {r.fable.length > 0 && (
+        <li className="cmd-reset-line" data-window="fable">
+          {`Fable reset early by Anthropic ${times(r.fable.length)} this past week: ${at(r.fable)}`}
+        </li>
+      )}
+    </>
+  )
+}
+
 /**
  * The detail's Fable line, read like the weekly and 5-hour lines: how much of its own allowance is
  * used and when it resets. Only when the week has less room than the allowance (Fable also spends
@@ -367,6 +434,8 @@ export function PoolAccounts(props: {
   colors?: Map<string, string>
   /** What each weekly reset will leave unused at this pace (PoolGaps.unusedAtReset). */
   unusedAtReset?: PoolGaps['unusedAtReset']
+  /** Each subscription's early resets over the last week (earlyResets); none while unread. */
+  earlyResets?: ReadonlyMap<string, EarlyResets> | null
 }) {
   const names = shortNames(props.profiles.map((p) => p.profile))
   const colors = props.colors ?? accountColors(props.profiles.map((p) => p.profile))
@@ -443,7 +512,10 @@ export function PoolAccounts(props: {
                   if (event.pointerType === 'mouse') openFrom(p.profile, event.currentTarget, false)
                 }}
               >
-                <span className="cmd-account-name">{names.get(p.profile)}</span>
+                <span className="cmd-account-label">
+                  <span className="cmd-account-name">{names.get(p.profile)}</span>
+                  <ResetBadges resets={props.earlyResets?.get(p.profile)} />
+                </span>
                 <span className="cmd-account-marks" aria-hidden="true">
                   <WeekMeter
                     used={weekly}
@@ -468,7 +540,9 @@ export function PoolAccounts(props: {
                     fable === undefined
                       ? ''
                       : `, Fable ${fable === null ? 'no reading' : `${formatPercent(fable)} left`}`
-                  }${available ? '' : ', not available'}`}
+                  }${available ? '' : ', not available'}${earlyResetsSaid(
+                    props.earlyResets?.get(p.profile),
+                  )}`}
                 </span>
               </button>
             </li>
@@ -476,7 +550,11 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''} · ring: 5 hours left`}
+        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''} · ring: 5 hours left${
+          [...(props.earlyResets?.values() ?? [])].some((r) => r.weekly.length + r.fable.length > 0)
+            ? ' · badge: reset early this past week (red: week, blue: Fable)'
+            : ''
+        }`}
       </p>
       {shown !== null && (
         <div
@@ -533,6 +611,7 @@ export function PoolAccounts(props: {
               )
             })()}
             {shown.fable != null && <FableDetail profile={shown} now={props.now} />}
+            <EarlyResetDetail resets={props.earlyResets?.get(shown.profile)} now={props.now} />
             {shown.fable?.refusedUntil != null && shown.fable.refusedUntil > props.now && (
               <li>
                 {`Anthropic refuses its Fable requests for ${formatCountdown(shown.fable.refusedUntil - props.now)}; they go to other subscriptions, and it serves every other model`}
@@ -792,6 +871,8 @@ export function PoolOutlook(props: {
   profiles: ProfileStatus[] | null
   now: EpochMs
   detail?: string | null
+  /** Each subscription's early resets over the last week, for the badges on its cell. */
+  earlyResets?: ReadonlyMap<string, EarlyResets> | null
 }) {
   const { now } = props
   // No clock times in the banner: the countdowns say it.
@@ -844,6 +925,7 @@ export function PoolOutlook(props: {
             profiles={props.profiles}
             now={now}
             unusedAtReset={props.gaps?.unusedAtReset ?? []}
+            earlyResets={props.earlyResets ?? null}
           />
         )}
       </div>
