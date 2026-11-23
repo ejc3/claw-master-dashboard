@@ -163,7 +163,7 @@ describe('the banked-reset badges', () => {
               rateLimitedUntil: NOW + 30 * 60_000,
               bankedResets: { weekly: 0, fable: 0 },
             },
-            // Available: its banked reset is in its detail, not on its cell.
+            // Available: badged all the same.
             { ...sub('team-open'), bankedResets: { weekly: 1, fable: 0 } },
           ]}
           now={NOW}
@@ -188,7 +188,7 @@ describe('the banked-reset badges', () => {
     expect(gift.querySelector('.cmd-account-label .cmd-reset-badges')).not.toBeNull()
     expect(plain.querySelector('.cmd-reset-badges')).toBeNull()
     const open = cells.find((c) => c.textContent?.includes('open')) as HTMLElement
-    expect(open.querySelector('.cmd-reset-badges')).toBeNull()
+    expect([...open.querySelectorAll('.cmd-reset-badge')].map((b) => b.textContent)).toEqual(['1'])
     expect(gift.querySelector('.cmd-visually-hidden')?.textContent).toContain(
       '2 Weekly resets, Fable reset',
     )
@@ -211,7 +211,7 @@ describe('the banked-reset badges', () => {
     expect(used[0]).toMatch(/^Weekly reset used .+$/)
   })
 
-  it('leave the legend alone when no subscription that is out has one banked', () => {
+  it('show on a subscription that is available too, and leave the legend alone when none has one banked', () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -219,9 +219,23 @@ describe('the banked-reset badges', () => {
     act(() =>
       root.render(
         <PoolAccounts
-          profiles={[{ ...sub('team-open'), bankedResets: { weekly: 1, fable: 1 } }]}
+          profiles={[
+            { ...sub('team-open'), bankedResets: { weekly: 1, fable: 1 } },
+            { ...sub('team-none'), bankedResets: { weekly: 0, fable: 0 } },
+          ]}
           now={NOW}
-          earlyResets={new Map([['team-open', { weekly: [NOW - 2 * HOUR_MS], fable: [] }]])}
+        />,
+      ),
+    )
+    expect(container.querySelectorAll('.cmd-reset-badge')).toHaveLength(2)
+    expect(container.querySelector('.cmd-accounts-legend')?.textContent).toContain(
+      'badge: resets banked',
+    )
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[{ ...sub('team-none'), bankedResets: { weekly: 0, fable: 0 } }]}
+          now={NOW}
         />,
       ),
     )

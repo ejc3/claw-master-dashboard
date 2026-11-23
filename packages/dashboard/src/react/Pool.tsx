@@ -562,8 +562,8 @@ export function PoolAccounts(props: {
               >
                 <span className="cmd-account-label">
                   <span className="cmd-account-name">{names.get(p.profile)}</span>
-                  {/* Only on a subscription that is out: a banked reset can bring it back now. */}
-                  {!available && <ResetBadges banked={p.bankedResets} />}
+                  {/* On every subscription with one banked, out or not. */}
+                  <ResetBadges banked={p.bankedResets} />
                 </span>
                 <span className="cmd-account-marks" aria-hidden="true">
                   <WeekMeter
@@ -615,9 +615,7 @@ export function PoolAccounts(props: {
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
         {`Bar: week left${barKey(props.profiles)} · ring: 5 hours left${
-          props.profiles.some((p) => hasBanked(p) && !hasHeadroom(p, props.now))
-            ? ' · badge: resets banked (red: week, blue: Fable)'
-            : ''
+          props.profiles.some(hasBanked) ? ' · badge: resets banked (red: week, blue: Fable)' : ''
         }`}
       </p>
       {shown !== null && (
