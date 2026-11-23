@@ -408,12 +408,13 @@ function FableDetail(props: { profile: ProfileStatus; now: EpochMs }) {
     used !== null &&
     room !== null &&
     room < 1 - used - 0.005
+  // Resetting with the week, as it does, goes unsaid: the weekly line has the time.
   const resets =
-    fable.resetsAt === null || fable.resetsAt <= now
+    fable.resetsAt === null ||
+    fable.resetsAt <= now ||
+    sameMoment(fable.resetsAt, profile.weekly.resetsAt)
       ? ''
-      : sameMoment(fable.resetsAt, profile.weekly.resetsAt)
-        ? ' · resets with the week'
-        : ` · resets in ${formatCountdown(fable.resetsAt - now)}`
+      : ` · resets in ${formatCountdown(fable.resetsAt - now)}`
   return (
     <li>
       {`Fable ${used === null ? 'no reading' : `${formatPercent(used)} used`}${

@@ -82,7 +82,7 @@ describe('the subscription detail', () => {
     return container.querySelector('.cmd-account-detail') as HTMLElement
   }
 
-  it("links a reset to the API's calendar file, and says Fable resets with the week", () => {
+  it("links a reset to the API's calendar file, and leaves Fable's reset with the week unsaid", () => {
     const fractional = sub(NOW + 50 * HOUR_MS + 30_000)
     fractional.weekly = { ...fractional.weekly, resetsAt: NOW + 50 * HOUR_MS + 0.4534 }
     const detail = open(fractional, '/api/claw-master')
@@ -91,7 +91,8 @@ describe('the subscription detail', () => {
       /^\/api\/claw-master\/reset\.ics\?title=team-alpha%3A\+weekly\+limit\+resets&at=\d+$/,
     )
     expect(link.hasAttribute('download')).toBe(false)
-    expect(detail.textContent).toContain('Fable 0% used · resets with the week')
+    expect(detail.textContent).toContain('Fable 0% used')
+    expect(detail.textContent).not.toMatch(/Fable 0% used ·/)
     expect(detail.querySelectorAll('a')).toHaveLength(1)
   })
 
