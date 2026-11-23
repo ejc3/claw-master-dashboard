@@ -787,11 +787,18 @@ describe('the account bars', () => {
     )
     expect(arc(items[0])?.getAttribute('transform')).toBe('rotate(-90 10 10)')
     expect(arc(items[1])).toBeNull()
-    // Read out in full for a screen reader.
-    expect(items[0]?.textContent).toContain('alpha: week 48% left, 5-hour 4.0% left')
-    expect(items[1]?.textContent).toContain('bravo: week 0% left, 5-hour 0% left')
-    expect(items[2]?.textContent).toContain('charlie: week 73% left, 5-hour 0% left, not available')
-    expect(items[1]?.textContent).not.toContain('not available')
+    // Read out in full for a screen reader (the marks themselves are hidden from it).
+    const said = (e: Element | undefined) =>
+      `${e?.querySelector('.cmd-account-name')?.textContent}${e?.querySelector('.cmd-visually-hidden')?.textContent}`
+    expect(said(items[0])).toContain('alpha: week 48% left, 5-hour 4.0% left')
+    expect(said(items[1])).toContain('bravo: week 0% left, 5-hour 0% left')
+    expect(said(items[2])).toContain(
+      'charlie: week 73% left, 5-hour 0% left, not available, back in 1h',
+    )
+    expect(said(items[1])).not.toContain('not available')
+    // Out for now, charlie shows in its ring's place when it is back.
+    expect(items[2]?.querySelector('.cmd-ring')).toBeNull()
+    expect(items[2]?.querySelector('.cmd-ring-back')?.textContent).toBe('1h')
   })
 
   it('shortens names only by a shared prefix ending at a separator', () => {

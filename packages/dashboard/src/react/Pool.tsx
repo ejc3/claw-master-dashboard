@@ -134,6 +134,14 @@ function WeekMeter(props: {
   )
 }
 
+/** How soon a subscription out for now is back, short enough for the ring's place: 47m, 3h, 2d. */
+export function backIn(ms: number): string {
+  const minutes = Math.max(1, Math.floor(ms / 60_000))
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.round(minutes / 60)
+  return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`
+}
+
 const RING_R = 7
 const RING_C = 2 * Math.PI * RING_R
 
@@ -297,9 +305,9 @@ function WindowDetail(props: {
   )
 }
 
-const times = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`)
-
-const resets = (n: number) => (n === 1 ? '1 reset' : `${n} resets`)
+/** "Weekly reset", "3 Fable resets": what claude.ai's usage page calls them, counted past one. */
+const resetName = (n: number, kind: 'Weekly' | 'Fable') =>
+  n === 1 ? `${kind} reset` : `${n} ${kind} resets`
 
 /** Whether a subscription has any reset banked. */
 const hasBanked = (p: ProfileStatus) =>
@@ -312,20 +320,16 @@ const hasBanked = (p: ProfileStatus) =>
 function ResetBadges(props: { banked: BankedResets | null | undefined }) {
   const r = props.banked
   if (r == null || (r.weekly === 0 && r.fable === 0)) return null
-  const badge = (window: 'weekly' | 'fable', count: number, what: string) =>
+  const badge = (window: 'weekly' | 'fable', count: number, what: 'Weekly' | 'Fable') =>
     count === 0 ? null : (
-      <span
-        className="cmd-reset-badge"
-        data-window={window}
-        title={`${resets(count)} banked to clear its ${what}`}
-      >
+      <span className="cmd-reset-badge" data-window={window} title={resetName(count, what)}>
         {count}
       </span>
     )
   return (
     <span className="cmd-reset-badges" aria-hidden="true">
-      {badge('weekly', r.weekly, 'week')}
-      {badge('fable', r.fable, 'Fable allowance')}
+      {badge('weekly', r.weekly, 'Weekly')}
+      {badge('fable', r.fable, 'Fable')}
     </span>
   )
 }
@@ -334,8 +338,8 @@ function ResetBadges(props: { banked: BankedResets | null | undefined }) {
 function bankedSaid(r: BankedResets | null | undefined): string {
   if (r == null) return ''
   const parts = [
-    r.weekly > 0 ? `${resets(r.weekly)} banked for the week` : '',
-    r.fable > 0 ? `${resets(r.fable)} banked for Fable` : '',
+    r.weekly > 0 ? resetName(r.weekly, 'Weekly') : '',
+    r.fable > 0 ? resetName(r.fable, 'Fable') : '',
   ].filter((part) => part !== '')
   return parts.length === 0 ? '' : `, ${parts.join(', ')}`
 }
@@ -348,12 +352,12 @@ function BankedDetail(props: { banked: BankedResets | null | undefined }) {
     <>
       {r.weekly > 0 && (
         <li className="cmd-banked-line" data-window="weekly">
-          {`${resets(r.weekly)} banked: claiming one clears the week now`}
+          {resetName(r.weekly, 'Weekly')}
         </li>
       )}
       {r.fable > 0 && (
         <li className="cmd-banked-line" data-window="fable">
-          {`${resets(r.fable)} banked: claiming one clears Fable's allowance now`}
+          {resetName(r.fable, 'Fable')}
         </li>
       )}
     </>
@@ -373,12 +377,12 @@ function EarlyResetDetail(props: { resets: EarlyResets | undefined; now: EpochMs
     <>
       {r.weekly.length > 0 && (
         <li className="cmd-reset-line" data-window="weekly">
-          {`Week reset early ${times(r.weekly.length)} this past week: ${at(r.weekly)}`}
+          {`Weekly reset used ${at(r.weekly)}`}
         </li>
       )}
       {r.fable.length > 0 && (
         <li className="cmd-reset-line" data-window="fable">
-          {`Fable reset early ${times(r.fable.length)} this past week: ${at(r.fable)}`}
+          {`Fable reset used ${at(r.fable)}`}
         </li>
       )}
     </>
@@ -531,6 +535,8 @@ export function PoolAccounts(props: {
           const available = hasHeadroom(p, props.now)
           // Out only for now (its 5-hour window, or a rate limit before the week resets): greyed.
           const fiveOut = outForNow(p, props.now)
+          const until = fiveOut ? blocked(p, props.now)?.until : null
+          const back = until != null && until > props.now ? until : null
           // Only a plan with a Fable allowance gets Fable's line: what is left of it this week, like
           // the bar itself, whether or not a 5-hour window or rate limit holds the subscription now.
           const fable = p.fable == null ? undefined : fableRoom(p, props.now)
@@ -567,7 +573,17 @@ export function PoolAccounts(props: {
                     {...(fable === undefined ? {} : { fable })}
                   />
                   {/* No 5-hour limit, no ring: an empty space keeps the bars lined up. */}
-                  {five === null && noFiveHourLimit(p) ? (
+                  {/* Out for now: in the ring's place, when it is back. */}
+                  {fiveOut && back !== null ? (
+                    <span
+                      className="cmd-ring-back"
+                      data-window="fiveHour"
+                      data-level={levelOf(five)}
+                      data-left={pct(five === null ? 0 : Math.max(0, 1 - five))}
+                    >
+                      {backIn(back - props.now)}
+                    </span>
+                  ) : five === null && noFiveHourLimit(p) ? (
                     <span className="cmd-ring-none" />
                   ) : (
                     <FiveRing used={five} color={colors.get(p.profile) ?? ''} />
@@ -586,9 +602,11 @@ export function PoolAccounts(props: {
                       : `, Fable ${fable === null ? 'no reading' : `${formatPercent(fable)} left`}`
                   }${
                     (p.reserveFraction ?? 0) > 0
-                      ? `, reserve holds back ${formatPercent(p.reserveFraction ?? 0)} of the week`
+                      ? `, reserve: last ${formatPercent(p.reserveFraction ?? 0)} of the week`
                       : ''
-                  }${available ? '' : ', not available'}${bankedSaid(p.bankedResets)}`}
+                  }${available ? '' : ', not available'}${
+                    back === null ? '' : `, back in ${backIn(back - props.now)}`
+                  }${bankedSaid(p.bankedResets)}`}
                 </span>
               </button>
             </li>
@@ -623,7 +641,7 @@ export function PoolAccounts(props: {
           <ul>
             <WindowDetail name="Weekly" who={shown.profile} window={shown.weekly} now={props.now} />
             {(shown.reserveFraction ?? 0) > 0 && (
-              <li>{`Its reserve holds back the last ${formatPercent(shown.reserveFraction ?? 0)} of the week from the pool`}</li>
+              <li>{`Reserve: last ${formatPercent(shown.reserveFraction ?? 0)} of the week`}</li>
             )}
             {(() => {
               const next = props.unusedAtReset?.find((r) => r.profile === shown.profile)
