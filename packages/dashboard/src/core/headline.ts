@@ -209,16 +209,18 @@ export function fableAt(fable: FableAllowance, at: EpochMs): FableAllowance {
 }
 
 /**
- * What a subscription has left of its weekly Fable allowance now, as a share of it; null when it
- * reports no Fable figure (no Fable in its plan, or an older claw-master) or no reading. Nothing
- * while Anthropic refuses it Fable, or while its week is used up or refused. Fable also spends the
- * week, so it can never use more than the week has left, counted in Fable's own units.
+ * How much of its weekly Fable allowance a subscription can still spend this week, as a share of the
+ * allowance; null when it reports no Fable figure (no Fable in its plan, or an older claw-master) or
+ * no reading. Nothing while Anthropic refuses it Fable or its week is used up. Fable also spends the
+ * week, so it can never use more than the week has left, counted in Fable's own units. A 5-hour
+ * window or a short rate limit does not count: like the week's bar, this is what is left, not what
+ * can be used this minute (fableLeft).
  */
-export function fableLeft(profile: ProfileStatus, now: EpochMs): number | null {
+export function fableRoom(profile: ProfileStatus, now: EpochMs): number | null {
   if (profile.fable === undefined || profile.fable === null) return null
   const fable = fableAt(profile.fable, now)
   if (fable.refusedUntil !== null && fable.refusedUntil > now) return 0
-  if (weekUsedUp(profile, now) || blocked(profile, now)?.reason === 'rate-limited') return 0
+  if (weekUsedUp(profile, now)) return 0
   if (fable.usedFraction === null || !Number.isFinite(fable.usedFraction)) return null
   const left = 1 - Math.min(1, Math.max(0, fable.usedFraction))
   // A week past its reset has nothing used yet, whatever was last read.
@@ -226,6 +228,18 @@ export function fableLeft(profile: ProfileStatus, now: EpochMs): number | null {
   const weekUsed = weekOver ? 0 : profile.weekly.usedFraction
   if (weekUsed === null || !Number.isFinite(weekUsed)) return left
   return Math.min(left, Math.max(0, 1 - weekUsed) / FABLE_SHARE_OF_WEEK)
+}
+
+/**
+ * What a subscription can spend of its weekly Fable allowance right now (fableRoom), nothing while
+ * Anthropic rate limits it or refuses it outright.
+ */
+export function fableLeft(profile: ProfileStatus, now: EpochMs): number | null {
+  if (profile.fable === undefined || profile.fable === null) return null
+  const refusedUntil = fableAt(profile.fable, now).refusedUntil
+  if (refusedUntil !== null && refusedUntil > now) return 0
+  if (weekUsedUp(profile, now) || blocked(profile, now)?.reason === 'rate-limited') return 0
+  return fableRoom(profile, now)
 }
 
 /**

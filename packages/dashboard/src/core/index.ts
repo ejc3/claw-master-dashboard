@@ -66,6 +66,7 @@ export {
   FABLE_SHARE_OF_WEEK,
   fableAt,
   fableLeft,
+  fableRoom,
   fableSummary,
   fiveHourAt,
   fiveHourLeft,
