@@ -98,6 +98,18 @@ const CATALOG: Record<SemanticMetric, Entry> = {
     statistic: 'MAX',
     dimensions: ['profile'],
   },
+  // The weekly Fable allowance's used share and countdown (ejc3/CLIProxyAPI#34): an early reset of
+  // the allowance is measured from them (earlyResets).
+  fableUsed: {
+    name: 'claw_master.quota.fable.used_fraction',
+    statistic: 'MAX',
+    dimensions: ['profile'],
+  },
+  fableResetsInSeconds: {
+    name: 'claw_master.quota.fable.resets_in_seconds',
+    statistic: 'MAX',
+    dimensions: ['profile'],
+  },
   tokenExpiresInSeconds: {
     name: 'claw_master.auth.token_expires_in_seconds',
     statistic: 'MIN',

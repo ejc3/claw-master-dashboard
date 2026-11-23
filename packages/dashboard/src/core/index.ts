@@ -85,6 +85,9 @@ export {
 } from './headline'
 export {
   DAY_MS,
+  type EarlyResets,
+  earlyResets,
+  earlyResetTimes,
   HISTORY_SPAN_MS,
   measuredBlocked,
   measuredResets,

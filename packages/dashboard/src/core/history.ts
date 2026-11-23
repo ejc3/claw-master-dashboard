@@ -211,3 +211,91 @@ export function runningBlocked(
     return [t, ms / HOUR_MS]
   })
 }
+
+/** When Anthropic reset a subscription's week, or its Fable allowance alone, before it was due. */
+export interface EarlyResets {
+  weekly: EpochMs[]
+  fable: EpochMs[]
+}
+
+/** How far a used share must fall from one bucket to the next to be a reset, not a correction. */
+const EARLY_RESET_DROP = 0.1
+
+/** How old the countdown read before a fall may be to say when the reset was due. */
+const COUNTDOWN_MAX_AGE_MS = HOUR_MS
+
+/**
+ * The resets in [from, to) that came early: where the used share falls by at least a tenth from one
+ * bucket to the next while the reset due, by the countdown read before the higher bucket, was not
+ * until after the lower bucket ended. The countdown is taken from before the higher bucket because
+ * a bucket holding an ordinary reset already reads the next week's countdown as its highest. Each
+ * is placed at the lower bucket's start, the first reading of the new allowance.
+ */
+export function earlyResetTimes(
+  used: ReadonlyArray<[EpochMs, number]>,
+  resetsIn: ReadonlyArray<[EpochMs, number]>,
+  stepMs: number,
+  from: EpochMs,
+  to: EpochMs,
+): EpochMs[] {
+  const readings = used.filter(([, v]) => Number.isFinite(v))
+  const countdowns = resetsIn.filter(([, v]) => Number.isFinite(v) && v > 0)
+  const resets: EpochMs[] = []
+  for (let i = 1; i < readings.length; i++) {
+    const [highAt, high] = readings[i - 1] as [EpochMs, number]
+    const [lowAt, low] = readings[i] as [EpochMs, number]
+    if (lowAt < from || lowAt >= to || high - low < EARLY_RESET_DROP) continue
+    // Neighbouring buckets only: across a gap in the readings nothing says when it fell.
+    if (lowAt - highAt > stepMs) continue
+    let due: EpochMs | null = null
+    for (const [t, left] of countdowns) {
+      if (t >= highAt) break
+      if (t >= highAt - COUNTDOWN_MAX_AGE_MS) due = t + left * 1000
+    }
+    if (due !== null && due > lowAt + stepMs) resets.push(lowAt)
+  }
+  return resets
+}
+
+/**
+ * Each subscription's early resets in [from, to) (earlyResetTimes): of its week, and of its Fable
+ * allowance on its own. A Fable fall within a bucket of an early weekly reset is that reset, not a
+ * second one.
+ */
+export function earlyResets(
+  history: {
+    stepMs: number
+    weeklyUsed: Series[]
+    weeklyResetsInSeconds: Series[]
+    fableUsed: Series[]
+    fableResetsInSeconds: Series[]
+  },
+  from: EpochMs,
+  to: EpochMs,
+): Map<string, EarlyResets> {
+  const points = (series: Series[]) => new Map(series.map((s) => [s.key, s.points]))
+  const weeklyCountdown = points(history.weeklyResetsInSeconds)
+  const fableUsed = points(history.fableUsed)
+  const fableCountdown = points(history.fableResetsInSeconds)
+  const profiles = new Set([...history.weeklyUsed, ...history.fableUsed].map((s) => s.key))
+  const weeklyUsed = points(history.weeklyUsed)
+  const out = new Map<string, EarlyResets>()
+  for (const profile of profiles) {
+    const weekly = earlyResetTimes(
+      weeklyUsed.get(profile) ?? [],
+      weeklyCountdown.get(profile) ?? [],
+      history.stepMs,
+      from,
+      to,
+    )
+    const fable = earlyResetTimes(
+      fableUsed.get(profile) ?? [],
+      fableCountdown.get(profile) ?? [],
+      history.stepMs,
+      from,
+      to,
+    ).filter((t) => !weekly.some((w) => Math.abs(w - t) <= history.stepMs))
+    if (weekly.length > 0 || fable.length > 0) out.set(profile, { weekly, fable })
+  }
+  return out
+}

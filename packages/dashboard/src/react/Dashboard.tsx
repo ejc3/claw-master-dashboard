@@ -7,6 +7,7 @@ import {
   type CapacityAdvice,
   capacityAdvice,
   type EpochMs,
+  earlyResets,
   forecastProfiles,
   formatCount,
   formatCountdown,
@@ -33,6 +34,7 @@ import {
   tokenCoverage,
   tokensBetween,
   tokensOfType,
+  WEEK_MS,
   WEEKLY_SMOOTHING_MS,
 } from '../core'
 import { useSharedAnswers } from './answers'
@@ -67,6 +69,7 @@ import {
   chartQuery,
   FIRST_RANGE,
   type FirstSeries,
+  historyQuery,
   kpiHourEnd,
   kpiQuery,
   kpiTokensQuery,
@@ -74,6 +77,7 @@ import {
   queryKey,
   RANGES,
   type RangeName,
+  READINGS_STEP_MS,
   readingsQuery,
   tabQueries,
   tokensByProfileQuery,
@@ -332,6 +336,42 @@ function DashboardBody(props: DashboardProps) {
     return rates
   }, [usedData, smoothingRange.end])
   const fiveData = useLastReady(useReadings(apiBase, readingsQuery(now, 'fiveHourUsed')))
+  // Early resets over the last week, from the same readings last week's history is measured from:
+  // where Anthropic gave a subscription its week, or its Fable allowance, back before it was due.
+  const resetsHistory = {
+    weeklyUsed: useLastReady(useReadings(apiBase, historyQuery(now, 'weeklyUsed'))),
+    weeklyResetsInSeconds: useLastReady(
+      useReadings(apiBase, historyQuery(now, 'weeklyResetsInSeconds')),
+    ),
+    fableUsed: useLastReady(useReadings(apiBase, historyQuery(now, 'fableUsed'))),
+    fableResetsInSeconds: useLastReady(
+      useReadings(apiBase, historyQuery(now, 'fableResetsInSeconds')),
+    ),
+  }
+  const {
+    weeklyUsed: wU,
+    weeklyResetsInSeconds: wR,
+    fableUsed: fU,
+    fableResetsInSeconds: fR,
+  } = resetsHistory
+  const resetsEnd = historyQuery(now, 'weeklyUsed').range.end
+  const early = useMemo(
+    () =>
+      wU === null || wR === null
+        ? null
+        : earlyResets(
+            {
+              stepMs: READINGS_STEP_MS,
+              weeklyUsed: wU,
+              weeklyResetsInSeconds: wR,
+              fableUsed: fU ?? [],
+              fableResetsInSeconds: fR ?? [],
+            },
+            resetsEnd - WEEK_MS,
+            resetsEnd,
+          ),
+    [wU, wR, fU, fR, resetsEnd],
+  )
   const rates = useMemo(
     () => poolRates(usedData ?? [], fiveData ?? [], smoothingRange.end),
     [usedData, fiveData, smoothingRange.end],
@@ -529,6 +569,7 @@ function DashboardBody(props: DashboardProps) {
           profiles={profilesNow}
           now={now}
           detail={outlookDetail}
+          earlyResets={early}
         />
 
         <ForecastHistory

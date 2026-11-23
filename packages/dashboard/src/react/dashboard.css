@@ -26,6 +26,10 @@
     --cmd-reserve: #856c00;
     --cmd-reserve-mark: #ebc000;
     --cmd-reserve-soft: rgb(235 192 0 / 0.1);
+    /* Early-reset badges: Anthropic gave a week (red) or a Fable allowance (blue) back early. */
+    --cmd-reset-week: #cf2126;
+    --cmd-reset-fable: #1f6fd1;
+    --cmd-badge-ink: #ffffff;
     --cmd-exhausted: #cf2126;
     --cmd-exhausted-mark: #f55459;
     --cmd-exhausted-soft: rgb(245 84 89 / 0.09);
@@ -80,6 +84,9 @@
       --cmd-reserve: #f5cc4a;
       --cmd-reserve-mark: #e5b800;
       --cmd-reserve-soft: rgb(229 184 0 / 0.12);
+      --cmd-reset-week: #f26a6e;
+      --cmd-reset-fable: #6aa6f5;
+      --cmd-badge-ink: #1b1420;
       --cmd-exhausted: #ff7a7e;
       --cmd-exhausted-mark: #fa4747;
       --cmd-exhausted-soft: rgb(250 71 71 / 0.14);
@@ -123,6 +130,9 @@
     --cmd-reserve: #f5cc4a;
     --cmd-reserve-mark: #e5b800;
     --cmd-reserve-soft: rgb(229 184 0 / 0.12);
+    --cmd-reset-week: #f26a6e;
+    --cmd-reset-fable: #6aa6f5;
+    --cmd-badge-ink: #1b1420;
     --cmd-exhausted: #ff7a7e;
     --cmd-exhausted-mark: #fa4747;
     --cmd-exhausted-soft: rgb(250 71 71 / 0.14);
@@ -435,6 +445,7 @@
 
   .cmd-account-name {
     min-width: 0;
+    max-width: 100%;
     font-size: 0.75rem;
     line-height: 1.2;
     color: var(--cmd-ink-2);
@@ -1478,6 +1489,88 @@
   @media (forced-colors: active) {
     .cmd-account[data-five-out] .cmd-account-name {
       color: GrayText;
+    }
+  }
+
+  /* The name and, under it, any early-reset badges: the row is tall enough for both, so the name
+     keeps its whole width. */
+  .cmd-account-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .cmd-reset-badges {
+    display: inline-flex;
+    flex: none;
+    gap: 2px;
+  }
+
+  .cmd-reset-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    height: 12px;
+    padding: 0 4px 0 3px;
+    border-radius: 6px;
+    background: var(--cmd-reset-mark);
+    color: var(--cmd-badge-ink);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Each badge and reset line colors itself through one property, so forced colors can override it. */
+  .cmd-reset-badge,
+  .cmd-reset-line {
+    --cmd-reset-mark: var(--cmd-reset-week);
+  }
+
+  .cmd-reset-badge[data-window="fable"],
+  .cmd-reset-line[data-window="fable"] {
+    --cmd-reset-mark: var(--cmd-reset-fable);
+  }
+
+  .cmd-reset-badge svg {
+    width: 8px;
+    height: 8px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* The detail's reset lines carry the badge's color as a small mark. */
+  .cmd-reset-line::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--cmd-reset-mark);
+    vertical-align: 0.1em;
+  }
+
+  @media (forced-colors: active) {
+    .cmd-reset-badge {
+      border: 1px solid CanvasText;
+      background: Canvas;
+      color: CanvasText;
+    }
+
+    .cmd-reset-badge[data-window="fable"] {
+      border-color: Highlight;
+      color: Highlight;
+    }
+
+    .cmd-reset-line::before {
+      border: 1px solid CanvasText;
+      background: Canvas;
     }
   }
 
