@@ -165,3 +165,44 @@ describe("when a subscription out for now is back, in its ring's place", () => {
     expect(backIn(50 * HOUR_MS)).toBe('2d')
   })
 })
+
+describe('the 5-hour mark of each kind of subscription', () => {
+  it('is no ring for one out for the week, when it is back for one out for now, and the ring for one available', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    const fiveHour = (used: number) => ({
+      usedFraction: used,
+      resetsAt: NOW + 2 * HOUR_MS,
+      lengthMs: 5 * HOUR_MS,
+    })
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[
+            // Refused until its week resets: out for the week.
+            { ...sub('team-week', 1, fiveHour(0.2)), rateLimitedUntil: NOW + 50 * HOUR_MS },
+            // Its 5-hour window full and no work taken for an hour: out for now.
+            { ...sub('team-now', 0.3, fiveHour(1)), acceptedAt: NOW - HOUR_MS },
+            sub('team-open', 0.3, fiveHour(0.4)),
+          ]}
+          now={NOW}
+        />,
+      ),
+    )
+    const cell = (name: string) =>
+      [...container.querySelectorAll('.cmd-account')].find(
+        (e) => e.querySelector('.cmd-account-name')?.textContent === name,
+      ) as Element
+    const mark = (name: string) =>
+      ['.cmd-ring', '.cmd-ring-none', '.cmd-ring-back']
+        .filter((m) => cell(name).querySelector(m) !== null)
+        .map((m) =>
+          m === '.cmd-ring-back' ? `${m} ${cell(name).querySelector(m)?.textContent}` : m,
+        )
+    expect(mark('week')).toEqual(['.cmd-ring-none'])
+    expect(mark('now')).toEqual(['.cmd-ring-back 2h'])
+    expect(mark('open')).toEqual(['.cmd-ring'])
+  })
+})
