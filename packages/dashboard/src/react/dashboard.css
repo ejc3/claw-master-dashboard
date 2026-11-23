@@ -1070,6 +1070,17 @@
     opacity: 0.45;
   }
 
+  /* The part of a week a reserve holds back: hatched over its subscription's band. */
+  .cmd-area-hatch {
+    pointer-events: none;
+  }
+
+  .cmd-hatch-line {
+    stroke: var(--cmd-ink);
+    stroke-width: 1.25;
+    opacity: 0.5;
+  }
+
   .cmd-tooltip {
     position: absolute;
     top: 0;
@@ -1403,6 +1414,12 @@
   }
 
   @media (forced-colors: active) {
+    /* A reserve's hatch keeps its lines. */
+    .cmd-hatch-line {
+      stroke: CanvasText;
+      opacity: 1;
+    }
+
     .cmd-runway,
     .cmd-share,
     .cmd-status,

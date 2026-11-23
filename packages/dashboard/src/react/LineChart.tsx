@@ -18,6 +18,11 @@ export interface ChartSeries {
   /** A CSS color, normally from seriesColors. */
   color: string
   points: Array<[EpochMs, number]>
+  /**
+   * Stacked only: the bottom of the series' band up to this value (in its own units) is hatched,
+   * e.g. the share of a subscription's week its reserve holds back, which is spent last.
+   */
+  hatchBelow?: number
 }
 
 interface Props {
@@ -440,6 +445,19 @@ export const LineChart = memo(function LineChart({
                   </text>
                 </g>
               )}
+              {stacked && series.some((s) => (s.hatchBelow ?? 0) > 0) && (
+                <defs>
+                  <pattern
+                    id={`${tableId}-hatch`}
+                    width="5"
+                    height="5"
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <line className="cmd-hatch-line" x1="0" y1="0" x2="0" y2="5" />
+                  </pattern>
+                </defs>
+              )}
               {stacked &&
                 series.map((s, k) => (
                   <polygon
@@ -454,6 +472,27 @@ export const LineChart = memo(function LineChart({
                     ].join(' ')}
                   />
                 ))}
+              {stacked &&
+                series.map((s, k) => {
+                  const below = s.hatchBelow ?? 0
+                  if (below <= 0) return null
+                  const w = weightOf(s.key)
+                  const base = (i: number) => (k === 0 ? 0 : (tops[k - 1]?.[i] ?? 0))
+                  return (
+                    <polygon
+                      key={`${s.key}-hatch`}
+                      className="cmd-area-hatch"
+                      data-series={s.key}
+                      fill={`url(#${tableId}-hatch)`}
+                      points={[
+                        ...s.points.map(
+                          ([t, v], i) => `${x(t)},${y(base(i) + Math.min(v, below) * w)}`,
+                        ),
+                        ...s.points.map(([t], i) => `${x(t)},${y(base(i))}`).reverse(),
+                      ].join(' ')}
+                    />
+                  )
+                })}
               {area &&
                 !stacked &&
                 series.length === 1 &&

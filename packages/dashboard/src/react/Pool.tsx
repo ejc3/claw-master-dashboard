@@ -743,6 +743,10 @@ export function CapacityOutlook(props: {
   const names = (props.profiles ?? []).map((p) => p.profile)
   const short = shortNames(names.length > 0 ? names : shown.subscriptionsShown)
   const colors = accountColors(names.length > 0 ? names : shown.subscriptionsShown)
+  const reserves = new Map(
+    (props.profiles ?? []).map((p) => [p.profile, p.reserveFraction ?? 0] as const),
+  )
+  const anyReserve = [...reserves.values()].some((r) => r > 0)
   const chart = (key: 'weekly' | 'fiveHour', title: string, height: number) => {
     const total = shown[key]
     const bySubscription = shown[key === 'weekly' ? 'weeklyBy' : 'fiveHourBy']
@@ -763,6 +767,10 @@ export function CapacityOutlook(props: {
           label: short.get(s.name) ?? s.name,
           color: colors.get(s.name) ?? 'var(--cmd-ink-3)',
           points: s.points,
+          // The last part of its week the owner's reserve holds back, hatched.
+          ...(key === 'weekly' && (reserves.get(s.name) ?? 0) > 0
+            ? { hatchBelow: reserves.get(s.name) ?? 0 }
+            : {}),
         }))}
         format={asPercent}
         max={ceiling(total, shown.capacity)}
@@ -809,6 +817,7 @@ export function CapacityOutlook(props: {
           : ''}{' '}
         · a 5-hour window can use no more than its week has left · shaded: none can take work, red
         until a week resets (or Anthropic's refusal ends), amber until a 5-hour window resets
+        {anyReserve ? ' · hatched: the part of a week its reserve holds back from the pool' : ''}
       </p>
     </div>
   )
