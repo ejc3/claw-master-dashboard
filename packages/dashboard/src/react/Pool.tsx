@@ -583,7 +583,9 @@ export function PoolAccounts(props: {
                     >
                       {backIn(back - props.now)}
                     </span>
-                  ) : five === null && noFiveHourLimit(p) ? (
+                  ) : !available || (five === null && noFiveHourLimit(p)) ? (
+                    // Out for the week (or until its login or a reading is back), or no 5-hour
+                    // limit: no ring, since its 5-hour state says nothing; a space keeps the bars lined up.
                     <span className="cmd-ring-none" />
                   ) : (
                     <FiveRing used={five} color={colors.get(p.profile) ?? ''} />
