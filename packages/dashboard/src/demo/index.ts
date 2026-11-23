@@ -85,11 +85,13 @@ interface DemoProfile {
   /** The weekly Fable allowance used, and how long Anthropic still refuses Fable; null: no Fable. */
   fableUsed: number | null
   fableRefusedMs?: number
-  /** How long ago Anthropic reset its week, or its Fable allowance alone, before it was due. */
+  /** How long ago its week, or its Fable allowance alone, was reset before it was due. */
   weeklyEarlyResetAgoMs?: number
   fableEarlyResetAgoMs?: number
   /** The share of its week the owner's reserve holds back, its last part. */
   reserveFraction?: number
+  /** The resets it has banked, to clear its week or its Fable allowance early. */
+  bankedResets?: { weekly: number; fable: number }
   /** How long ago the subscription joined the pool: it has no weekly reading before then. */
   joinedAgoMs?: number
 }
@@ -137,6 +139,8 @@ const PROFILES: readonly DemoProfile[] = [
   },
   {
     name: 'delta',
+    // Out for now, with a reset of each kind banked.
+    bankedResets: { weekly: 1, fable: 1 },
     band: 'reserve',
     weeklyUsed: 0.93,
     weeklyResetsInMs: 4.2 * 24 * HOUR_MS,
@@ -441,6 +445,7 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
                 refusedUntil: p.fableRefusedMs === undefined ? null : now + p.fableRefusedMs,
               },
         reserveFraction: p.reserveFraction ?? null,
+        bankedResets: p.bankedResets ?? { weekly: 0, fable: 0 },
       }))
       return { asOf, profiles, sessions: 23, activeConnections: 41 }
     },

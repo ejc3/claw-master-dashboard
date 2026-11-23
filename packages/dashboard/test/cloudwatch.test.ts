@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   ACCOUNT_ALIASES_KEY,
   bandFromGauge,
+  bankedResets,
   CloudWatchError,
   createCloudWatchSource,
   DEFAULT_CACHE_MS,
@@ -330,7 +331,7 @@ describe('createCloudWatchSource', () => {
     const { src, requests } = source(snapshotAnswers())
     const snapshot = await src.snapshot()
     const latest = t0 + 9 * 60_000
-    expect(requests).toHaveLength(17)
+    expect(requests).toHaveLength(19)
     const expressions = requests.map((r) => r.expression)
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
@@ -344,6 +345,12 @@ describe('createCloudWatchSource', () => {
     expect(expressions).toContain('SELECT MAX("claw_master.sessions.tracked") FROM "ClawMaster"')
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.reserve_fraction") FROM "ClawMaster" GROUP BY profile',
+    )
+    expect(expressions).toContain(
+      'SELECT MAX("claw_master.quota.weekly.resets_left") FROM "ClawMaster" GROUP BY profile',
+    )
+    expect(expressions).toContain(
+      'SELECT MAX("claw_master.quota.fable.resets_left") FROM "ClawMaster" GROUP BY profile',
     )
     expect(expressions).toContain(
       'SELECT SUM("claw_master.anthropic.ratelimit.state") FROM "ClawMaster" WHERE measure = \'status\' AND "window" = \'all\' GROUP BY profile, "value"',
@@ -865,6 +872,15 @@ describe('account aliases', () => {
       'alpha',
       'acct-0000cccc',
     ])
+  })
+})
+
+describe('bankedResets', () => {
+  it('is null when neither gauge is reported, else a whole count per limit, missing as none', () => {
+    expect(bankedResets(null, null)).toBeNull()
+    expect(bankedResets([0, 1], null)).toEqual({ weekly: 1, fable: 0 })
+    expect(bankedResets([0, 0], [0, 2])).toEqual({ weekly: 0, fable: 2 })
+    expect(bankedResets([0, -1], [0, Number.NaN])).toEqual({ weekly: 0, fable: 0 })
   })
 })
 

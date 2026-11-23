@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react'
 import {
+  type BankedResets,
   blocked,
   type CapacityAdvice,
   COVERAGE_TARGET,
@@ -298,19 +299,25 @@ function WindowDetail(props: {
 
 const times = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`)
 
+const resets = (n: number) => (n === 1 ? '1 reset' : `${n} resets`)
+
+/** Whether a subscription has any reset banked. */
+const hasBanked = (p: ProfileStatus) =>
+  p.bankedResets != null && p.bankedResets.weekly + p.bankedResets.fable > 0
+
 /**
- * A subscription's early resets this past week as small counted badges beside its name: red for
- * its week, blue for its Fable allowance alone. Nothing when there were none.
+ * The resets a subscription has banked, as small counted badges beside its name: red for those
+ * that clear its week, blue for those that clear its Fable allowance. Nothing when it has none.
  */
-function ResetBadges(props: { resets: EarlyResets | undefined }) {
-  const r = props.resets
-  if (r === undefined || (r.weekly.length === 0 && r.fable.length === 0)) return null
+function ResetBadges(props: { banked: BankedResets | null | undefined }) {
+  const r = props.banked
+  if (r == null || (r.weekly === 0 && r.fable === 0)) return null
   const badge = (window: 'weekly' | 'fable', count: number, what: string) =>
     count === 0 ? null : (
       <span
         className="cmd-reset-badge"
         data-window={window}
-        title={`Anthropic reset its ${what} early ${times(count)} this past week`}
+        title={`${resets(count)} banked to clear its ${what}`}
       >
         <svg viewBox="0 0 10 10" aria-hidden="true">
           <path d="M8.2 5.6A3.3 3.3 0 1 1 7.1 2.6" />
@@ -321,23 +328,43 @@ function ResetBadges(props: { resets: EarlyResets | undefined }) {
     )
   return (
     <span className="cmd-reset-badges" aria-hidden="true">
-      {badge('weekly', r.weekly.length, 'week')}
-      {badge('fable', r.fable.length, 'Fable allowance')}
+      {badge('weekly', r.weekly, 'week')}
+      {badge('fable', r.fable, 'Fable allowance')}
     </span>
   )
 }
 
-/** The early resets, for a screen reader's reading of the cell. */
-function earlyResetsSaid(r: EarlyResets | undefined): string {
-  if (r === undefined) return ''
+/** The banked resets, for a screen reader's reading of the cell. */
+function bankedSaid(r: BankedResets | null | undefined): string {
+  if (r == null) return ''
   const parts = [
-    r.weekly.length > 0 ? `week reset early ${times(r.weekly.length)}` : '',
-    r.fable.length > 0 ? `Fable reset early ${times(r.fable.length)}` : '',
+    r.weekly > 0 ? `${resets(r.weekly)} banked for the week` : '',
+    r.fable > 0 ? `${resets(r.fable)} banked for Fable` : '',
   ].filter((part) => part !== '')
-  return parts.length === 0 ? '' : `, ${parts.join(', ')} this past week`
+  return parts.length === 0 ? '' : `, ${parts.join(', ')}`
 }
 
-/** The detail's lines for the early resets: when Anthropic gave the week or Fable back. */
+/** The detail's lines for the banked resets: what each can clear. */
+function BankedDetail(props: { banked: BankedResets | null | undefined }) {
+  const r = props.banked
+  if (r == null) return null
+  return (
+    <>
+      {r.weekly > 0 && (
+        <li className="cmd-banked-line" data-window="weekly">
+          {`${resets(r.weekly)} banked: claiming one clears the week now`}
+        </li>
+      )}
+      {r.fable > 0 && (
+        <li className="cmd-banked-line" data-window="fable">
+          {`${resets(r.fable)} banked: claiming one clears Fable's allowance now`}
+        </li>
+      )}
+    </>
+  )
+}
+
+/** The detail's lines for the early resets this past week: when the week or Fable came back early. */
 function EarlyResetDetail(props: { resets: EarlyResets | undefined; now: EpochMs }) {
   const when = useWhen()
   const r = props.resets
@@ -350,12 +377,12 @@ function EarlyResetDetail(props: { resets: EarlyResets | undefined; now: EpochMs
     <>
       {r.weekly.length > 0 && (
         <li className="cmd-reset-line" data-window="weekly">
-          {`Week reset early by Anthropic ${times(r.weekly.length)} this past week: ${at(r.weekly)}`}
+          {`Week reset early ${times(r.weekly.length)} this past week: ${at(r.weekly)}`}
         </li>
       )}
       {r.fable.length > 0 && (
         <li className="cmd-reset-line" data-window="fable">
-          {`Fable reset early by Anthropic ${times(r.fable.length)} this past week: ${at(r.fable)}`}
+          {`Fable reset early ${times(r.fable.length)} this past week: ${at(r.fable)}`}
         </li>
       )}
     </>
@@ -533,8 +560,8 @@ export function PoolAccounts(props: {
               >
                 <span className="cmd-account-label">
                   <span className="cmd-account-name">{names.get(p.profile)}</span>
-                  {/* Only on a subscription that is out: there it says why it may be back early. */}
-                  {!available && <ResetBadges resets={props.earlyResets?.get(p.profile)} />}
+                  {/* Only on a subscription that is out: a banked reset can bring it back now. */}
+                  {!available && <ResetBadges banked={p.bankedResets} />}
                 </span>
                 <span className="cmd-account-marks" aria-hidden="true">
                   <WeekMeter
@@ -565,9 +592,7 @@ export function PoolAccounts(props: {
                     (p.reserveFraction ?? 0) > 0
                       ? `, reserve holds back ${formatPercent(p.reserveFraction ?? 0)} of the week`
                       : ''
-                  }${available ? '' : ', not available'}${earlyResetsSaid(
-                    props.earlyResets?.get(p.profile),
-                  )}`}
+                  }${available ? '' : ', not available'}${bankedSaid(p.bankedResets)}`}
                 </span>
               </button>
             </li>
@@ -576,13 +601,8 @@ export function PoolAccounts(props: {
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
         {`Bar: week left${barKey(props.profiles)} · ring: 5 hours left${
-          props.profiles.some((p) => {
-            const r = props.earlyResets?.get(p.profile)
-            return (
-              r !== undefined && r.weekly.length + r.fable.length > 0 && !hasHeadroom(p, props.now)
-            )
-          })
-            ? ' · badge: reset early this past week (red: week, blue: Fable)'
+          props.profiles.some((p) => hasBanked(p) && !hasHeadroom(p, props.now))
+            ? ' · badge: resets banked (red: week, blue: Fable)'
             : ''
         }`}
       </p>
@@ -644,6 +664,7 @@ export function PoolAccounts(props: {
               )
             })()}
             {shown.fable != null && <FableDetail profile={shown} now={props.now} />}
+            <BankedDetail banked={shown.bankedResets} />
             <EarlyResetDetail resets={props.earlyResets?.get(shown.profile)} now={props.now} />
             {shown.fable?.refusedUntil != null && shown.fable.refusedUntil > props.now && (
               <li>
