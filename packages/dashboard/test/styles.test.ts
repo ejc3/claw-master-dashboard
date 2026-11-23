@@ -142,3 +142,22 @@ describe('the sparkle', () => {
     expect(SPARKLE_MS).toBeGreaterThanOrEqual(duration + Math.max(...delays))
   })
 })
+
+describe('a subscription out until its 5-hour window resets', () => {
+  it('greys its bar and ring, not the button, and does not strike its name, after the strike rule', () => {
+    const grey = css.search(
+      /\.cmd-account\[data-five-out\] \.cmd-account-marks \{\s*filter: grayscale\(1\);\s*opacity: 0\.45;/,
+    )
+    const unstruck = css.search(
+      /\.cmd-account\[data-five-out\] \.cmd-account-name \{\s*text-decoration: none;/,
+    )
+    const struck = css.indexOf('.cmd-account[data-open="false"] .cmd-account-name {')
+    expect(grey).toBeGreaterThan(-1)
+    expect(unstruck).toBeGreaterThan(struck)
+    expect(struck).toBeGreaterThan(-1)
+    expect(css).not.toMatch(/\.cmd-account\[data-five-out\] > button \{[^}]*opacity/)
+    expect(css).toMatch(
+      /@media \(forced-colors: active\) \{\s*\.cmd-account\[data-five-out\] \.cmd-account-name \{\s*color: GrayText;/,
+    )
+  })
+})

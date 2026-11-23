@@ -171,7 +171,7 @@ describe('the Fable allowance on the page', () => {
 
     act(() => (row('bravo').querySelector('button') as HTMLButtonElement).click())
     const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
-    expect(detail).toContain('Fable 0% left · resets in 1d 6h')
+    expect(detail).toContain('Fable 100% used · resets in 1d 6h')
     expect(detail).toContain(
       'Anthropic refuses its Fable requests for 1d 6h; they go to other subscriptions, and it serves every other model',
     )
@@ -187,8 +187,8 @@ describe('the Fable allowance on the page', () => {
     expect(container.querySelector('[data-window="fable"]')?.getAttribute('data-level')).toBe('ok')
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
-    expect(detail).toContain('Fable 100% left')
-    expect(detail).not.toContain('Fable 0% left')
+    expect(detail).toContain('Fable 0% used')
+    expect(detail).not.toContain('Fable 100% used')
   })
 
   it('says how much Fable is left as the bar does, and when the week is what limits it', () => {
@@ -211,8 +211,50 @@ describe('the Fable allowance on the page', () => {
     expect([left('weekly'), left('fable')]).toEqual(['10%', '10%'])
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
-      'Fable 20% left (all the week leaves; its own allowance has 75% left) · resets with the week',
+      'Fable 25% used · the week leaves room for 20% more · resets with the week',
     )
+  })
+
+  it('says the week leaves no room when it rounds to nothing, not "room for 0% more"', () => {
+    const container = mount(
+      <PoolAccounts
+        profiles={[
+          sub(
+            'team-india',
+            { usedFraction: 0.25, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+            0.999,
+          ),
+        ]}
+        now={NOW}
+      />,
+    )
+    act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
+    const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
+    expect(detail).toContain('Fable 25% used · the week leaves no room for more')
+    expect(detail).not.toContain('0% more')
+  })
+
+  it('keeps Fable as the week does while a 5-hour window holds the subscription: no talk of the week', () => {
+    // 27% of the week used leaves room for more than the 69% of the allowance that is left.
+    const held = {
+      ...sub(
+        'team-hotel',
+        { usedFraction: 0.31, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+        0.27,
+      ),
+      rateLimitedUntil: NOW + 46 * 60_000,
+    }
+    const container = mount(<PoolAccounts profiles={[held]} now={NOW} />)
+    // The bar still shows what is left this week, Fable's line included.
+    expect(container.querySelector('[data-window="fable"]')?.getAttribute('data-left')).toBe(
+      '34.5%',
+    )
+    act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
+    const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
+    expect(detail).toContain('Fable 31% used · resets with the week')
+    expect(detail).not.toContain('room')
+    // Right now it can take no Fable at all.
+    expect(fableLeft(held, NOW)).toBe(0)
   })
 
   it("draws Fable's line at its share of the week: half the allowance left, in the week's units", () => {

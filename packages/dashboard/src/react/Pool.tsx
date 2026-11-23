@@ -18,7 +18,7 @@ import {
   type EpochMs,
   FABLE_SHARE_OF_WEEK,
   fableAt,
-  fableLeft,
+  fableRoom,
   fableSummary,
   fiveHourAt,
   fiveHourLeft,
@@ -28,6 +28,7 @@ import {
   HOUR_MS,
   hasHeadroom,
   noFiveHourLimit,
+  outForNow,
   type PoolGaps,
   type PoolTone,
   type ProfileStatus,
@@ -87,7 +88,7 @@ const levelOf = (used: number | null) =>
  */
 function WeekMeter(props: {
   used: number | null
-  /** The Fable allowance left (0–1, as fableLeft); undefined for a plan without one. */
+  /** The Fable allowance left (0–1, as fableRoom: what is left this week); undefined for a plan without one. */
   fable?: number | null
   color: string
 }) {
@@ -282,18 +283,18 @@ function WindowDetail(props: {
 }
 
 /**
- * The detail's Fable line: how much Fable the subscription can still use, the same figure as its bar
- * (fableLeft: the Fable allowance left, never more than the week leaves in Fable's units). When the
- * week is what limits it, the allowance's own figure is said too.
+ * The detail's Fable line, read like the weekly and 5-hour lines: how much of its own allowance is
+ * used and when it resets. Only when the week has less room than the allowance (Fable also spends
+ * the week) does it say how much more fits. A 5-hour window or rate limit is the header's to say.
  */
 function FableDetail(props: { profile: ProfileStatus; now: EpochMs }) {
   const { profile, now } = props
   if (profile.fable == null) return null
-  const left = fableLeft(profile, now)
   const fable = fableAt(profile.fable, now)
-  const own = share(fable.usedFraction)
-  const allowanceLeft = own === null ? null : 1 - own
-  const weekLimits = left !== null && allowanceLeft !== null && left < allowanceLeft - 0.005
+  const used = share(fable.usedFraction)
+  const room = fableRoom(profile, now)
+  const refused = fable.refusedUntil !== null && fable.refusedUntil > now
+  const weekLimits = !refused && used !== null && room !== null && room < 1 - used - 0.005
   const resets =
     fable.resetsAt === null || fable.resetsAt <= now
       ? ''
@@ -302,10 +303,12 @@ function FableDetail(props: { profile: ProfileStatus; now: EpochMs }) {
         : ` · resets in ${formatCountdown(fable.resetsAt - now)}`
   return (
     <li>
-      {`Fable ${left === null ? 'no reading' : `${formatPercent(left)} left`}${
-        weekLimits
-          ? ` (all the week leaves; its own allowance has ${formatPercent(allowanceLeft)} left)`
-          : ''
+      {`Fable ${used === null ? 'no reading' : `${formatPercent(used)} used`}${
+        !weekLimits || room === null
+          ? ''
+          : room < 0.005
+            ? ' · the week leaves no room for more'
+            : ` · the week leaves room for ${formatPercent(room)} more`
       }${resets}`}
     </li>
   )
@@ -415,13 +418,17 @@ export function PoolAccounts(props: {
           const fiveLeft = fiveHourLeft(p, props.now)
           const five = fiveLeft === null ? null : 1 - fiveLeft
           const available = hasHeadroom(p, props.now)
-          // Only a subscription whose plan has a Fable allowance gets the Fable strip.
-          const fable = p.fable == null ? undefined : fableLeft(p, props.now)
+          // Out only for now (its 5-hour window, or a rate limit before the week resets): greyed.
+          const fiveOut = outForNow(p, props.now)
+          // Only a plan with a Fable allowance gets Fable's line: what is left of it this week, like
+          // the bar itself, whether or not a 5-hour window or rate limit holds the subscription now.
+          const fable = p.fable == null ? undefined : fableRoom(p, props.now)
           return (
             <li
               key={p.profile}
               className="cmd-account"
               data-open={available}
+              data-five-out={fiveOut || undefined}
               data-returned={returned.has(p.profile) || undefined}
             >
               {returned.has(p.profile) && (

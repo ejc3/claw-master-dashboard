@@ -105,3 +105,50 @@ describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
     expect(bar('max').getAttribute('data-left')).toBe('50%')
   })
 })
+
+describe('a subscription out until its 5-hour window resets', () => {
+  it('is greyed out, not struck through; out for its week, its login or not out at all is not', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    const window = (used: number) => ({
+      usedFraction: used,
+      resetsAt: NOW + 46 * 60_000,
+      lengthMs: 5 * HOUR_MS,
+    })
+    const stale = { acceptedAt: NOW - HOUR_MS }
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[
+            // The poll reads the window full and Anthropic has stopped taking its work.
+            { ...sub('team-waiting', 0.27, window(1)), ...stale },
+            // A 429 hold that ends before the week resets, with the window read under 100%.
+            { ...sub('team-held', 0.27, window(0.8)), rateLimitedUntil: NOW + 30 * 60_000 },
+            // The poll reads 100% but Anthropic still took its work lately: nearly out, still in.
+            sub('team-nearly', 0.27, window(1)),
+            { ...sub('team-spent', 1, window(0.4)), ...stale },
+            { ...sub('team-login', 0.27, window(1)), ...stale, tokenExpiresAt: NOW - 1 },
+            sub('team-open', 0.3, window(0.5)),
+          ]}
+          now={NOW}
+        />,
+      ),
+    )
+    const cell = (name: string) =>
+      [...container.querySelectorAll('.cmd-account')].find((c) =>
+        c.textContent?.includes(name),
+      ) as HTMLElement
+    const state = (name: string) => [
+      cell(name).getAttribute('data-open'),
+      cell(name).hasAttribute('data-five-out'),
+    ]
+    expect(state('waiting')).toEqual(['false', true])
+    expect(state('held')).toEqual(['false', true])
+    expect(state('nearly')).toEqual(['true', false])
+    expect(state('spent')).toEqual(['false', false])
+    expect(state('login')).toEqual(['false', false])
+    expect(state('open')).toEqual(['true', false])
+  })
+})
