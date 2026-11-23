@@ -126,7 +126,7 @@ const RING_C = 2 * Math.PI * RING_R
  * The 5-hour window as a small ring of what is left. A subscription without a 5-hour limit shows the
  * week's room instead, dimmed (the limit does not apply); no reading is a dashed ring.
  */
-function FiveRing(props: { used: number | null; dim: boolean; color: string }) {
+function FiveRing(props: { used: number | null; color: string }) {
   const { used } = props
   const left = used === null ? null : Math.min(1, Math.max(0, 1 - used))
   return (
@@ -136,7 +136,6 @@ function FiveRing(props: { used: number | null; dim: boolean; color: string }) {
       data-window="fiveHour"
       data-level={levelOf(used)}
       data-left={pct(left ?? 0)}
-      data-dim={props.dim || undefined}
       style={{ '--cmd-account-fill': props.color } as CSSProperties}
       aria-hidden="true"
     >
@@ -520,7 +519,8 @@ export function PoolAccounts(props: {
               >
                 <span className="cmd-account-label">
                   <span className="cmd-account-name">{names.get(p.profile)}</span>
-                  <ResetBadges resets={props.earlyResets?.get(p.profile)} />
+                  {/* Only on a subscription that is out: there it says why it may be back early. */}
+                  {!available && <ResetBadges resets={props.earlyResets?.get(p.profile)} />}
                 </span>
                 <span className="cmd-account-marks" aria-hidden="true">
                   <WeekMeter
@@ -528,12 +528,12 @@ export function PoolAccounts(props: {
                     color={colors.get(p.profile) ?? ''}
                     {...(fable === undefined ? {} : { fable })}
                   />
-                  {/* No 5-hour limit: what limits the next five hours is the week, drawn dimmed. */}
-                  <FiveRing
-                    used={five === null && noFiveHourLimit(p) ? weekly : five}
-                    dim={five === null && noFiveHourLimit(p)}
-                    color={colors.get(p.profile) ?? ''}
-                  />
+                  {/* No 5-hour limit, no ring: an empty space keeps the bars lined up. */}
+                  {five === null && noFiveHourLimit(p) ? (
+                    <span className="cmd-ring-none" />
+                  ) : (
+                    <FiveRing used={five} color={colors.get(p.profile) ?? ''} />
+                  )}
                 </span>
                 <span className="cmd-visually-hidden">
                   {`: week ${formatPercent(weekly === null ? null : 1 - weekly)} left, 5-hour ${
@@ -557,7 +557,12 @@ export function PoolAccounts(props: {
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
         {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''} · ring: 5 hours left${
-          [...(props.earlyResets?.values() ?? [])].some((r) => r.weekly.length + r.fable.length > 0)
+          props.profiles.some((p) => {
+            const r = props.earlyResets?.get(p.profile)
+            return (
+              r !== undefined && r.weekly.length + r.fable.length > 0 && !hasHeadroom(p, props.now)
+            )
+          })
             ? ' · badge: reset early this past week (red: week, blue: Fable)'
             : ''
         }`}

@@ -508,7 +508,8 @@
   }
 
   /* The 5-hour window: a small ring of what is left, clockwise from the top. */
-  .cmd-ring {
+  .cmd-ring,
+  .cmd-ring-none {
     display: block;
     flex: none;
     width: 20px;
@@ -527,11 +528,6 @@
 
   .cmd-ring-left {
     stroke: var(--cmd-account-fill, var(--cmd-fill));
-  }
-
-  /* No 5-hour limit: the ring shows the week's room, dimmed. */
-  .cmd-ring[data-dim] .cmd-ring-left {
-    opacity: 0.4;
   }
 
   .cmd-ring[data-level="unknown"] .cmd-ring-track {
@@ -1492,12 +1488,11 @@
     }
   }
 
-  /* The name and, under it, any early-reset badges: the row is tall enough for both, so the name
-     keeps its whole width. */
+  /* The name and, raised after it like a superscript, any early-reset badges: the name gives way,
+     the badges never do. */
   .cmd-account-label {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 2px;
     min-width: 0;
   }
@@ -1505,19 +1500,21 @@
   .cmd-reset-badges {
     display: inline-flex;
     flex: none;
-    gap: 2px;
+    gap: 1px;
+    align-self: flex-start;
+    margin-top: -1px;
   }
 
   .cmd-reset-badge {
     display: inline-flex;
     align-items: center;
     gap: 1px;
-    height: 12px;
-    padding: 0 4px 0 3px;
-    border-radius: 6px;
+    height: 11px;
+    padding: 0 3px 0 2px;
+    border-radius: 5.5px;
     background: var(--cmd-reset-mark);
     color: var(--cmd-badge-ink);
-    font-size: 0.5625rem;
+    font-size: 0.5rem;
     font-weight: 700;
     line-height: 1;
     font-variant-numeric: tabular-nums;
@@ -1535,8 +1532,8 @@
   }
 
   .cmd-reset-badge svg {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.4;
