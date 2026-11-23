@@ -1540,12 +1540,15 @@
     margin-top: -1px;
   }
 
+  /* Just the count, in a dot that widens into a pill past nine. */
   .cmd-reset-badge {
     display: inline-flex;
     align-items: center;
-    gap: 1px;
+    justify-content: center;
+    box-sizing: border-box;
+    min-width: 11px;
     height: 11px;
-    padding: 0 3px 0 2px;
+    padding: 0 3px;
     border-radius: 5.5px;
     background: var(--cmd-reset-mark);
     color: var(--cmd-badge-ink);
@@ -1566,16 +1569,6 @@
   .cmd-banked-line[data-window="fable"],
   .cmd-reset-line[data-window="fable"] {
     --cmd-reset-mark: var(--cmd-reset-fable);
-  }
-
-  .cmd-reset-badge svg {
-    width: 7px;
-    height: 7px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.4;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
 
   /* The detail's lines carry the badge's color as a small mark: filled for a reset still banked,

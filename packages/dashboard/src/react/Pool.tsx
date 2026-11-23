@@ -319,10 +319,6 @@ function ResetBadges(props: { banked: BankedResets | null | undefined }) {
         data-window={window}
         title={`${resets(count)} banked to clear its ${what}`}
       >
-        <svg viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M8.2 5.6A3.3 3.3 0 1 1 7.1 2.6" />
-          <path d="M7.6 0.9 7.3 2.8 5.4 2.5" />
-        </svg>
         {count}
       </span>
     )
