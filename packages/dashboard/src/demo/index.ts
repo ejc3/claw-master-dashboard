@@ -88,6 +88,8 @@ interface DemoProfile {
   /** How long ago Anthropic reset its week, or its Fable allowance alone, before it was due. */
   weeklyEarlyResetAgoMs?: number
   fableEarlyResetAgoMs?: number
+  /** The share of its week the owner's reserve holds back, its last part. */
+  reserveFraction?: number
   /** How long ago the subscription joined the pool: it has no weekly reading before then. */
   joinedAgoMs?: number
 }
@@ -95,6 +97,7 @@ interface DemoProfile {
 const PROFILES: readonly DemoProfile[] = [
   {
     name: 'alpha',
+    reserveFraction: 0.3,
     band: 'ok',
     weeklyUsed: 0.42,
     weeklyResetsInMs: 3.1 * 24 * HOUR_MS,
@@ -437,6 +440,7 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
                 resetsAt: now + p.weeklyResetsInMs,
                 refusedUntil: p.fableRefusedMs === undefined ? null : now + p.fableRefusedMs,
               },
+        reserveFraction: p.reserveFraction ?? null,
       }))
       return { asOf, profiles, sessions: 23, activeConnections: 41 }
     },

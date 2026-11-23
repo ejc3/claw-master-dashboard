@@ -66,6 +66,12 @@ export interface ProfileStatus {
    * source cannot tell.
    */
   fable?: FableAllowance | null
+  /**
+   * The share of its week (0 to 1) the owner's reserve holds back from the pool, its last part
+   * (claw_master.quota.reserve_fraction); null when it has no reserve; absent when the source
+   * cannot tell.
+   */
+  reserveFraction?: number | null
 }
 
 /** Everything the dashboard shows as "now". */

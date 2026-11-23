@@ -269,6 +269,12 @@ export function bandFromGauge(value: number | null): Band {
 }
 
 /** The newest reading of a group, as [bucket start, value]; null with no points. */
+/** A reserve's share of the week from its gauge: null for none (no reading, or zero). */
+export function reserveShare(reading: [EpochMs, number] | null): number | null {
+  if (reading === null || !Number.isFinite(reading[1]) || reading[1] <= 0) return null
+  return Math.min(1, reading[1])
+}
+
 export function latest(result: InsightsResult | undefined): [EpochMs, number] | null {
   const point = result?.points.at(-1)
   return point === undefined ? null : point
@@ -495,6 +501,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         fableUsed,
         fableResets,
         fableRefused,
+        reserveShares,
       ] = await Promise.all([
         read(gauge('MAX', 'quota.used_fraction', ['profile'])),
         read(gauge('MAX', 'quota.resets_in_seconds', ['profile'])),
@@ -532,6 +539,8 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         read(gauge('MAX', 'quota.fable.used_fraction', ['profile'])),
         read(gauge('MAX', 'quota.fable.resets_in_seconds', ['profile'])),
         read(gauge('MAX', 'quota.fable.rate_limited_for_seconds', ['profile'])),
+        // How much of each week the owner's reserve holds back (claw-master releases that have it).
+        read(gauge('MAX', 'quota.reserve_fraction', ['profile'])),
       ])
       const byLabel = (results: InsightsResult[]) => new Map(results.map((r) => [r.label, r]))
       const resetsBy = byLabel(resets)
@@ -543,6 +552,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
       const fableUsedBy = byLabel(fableUsed)
       const fableResetsBy = byLabel(fableResets)
       const fableRefusedBy = byLabel(fableRefused)
+      const reserveBy = byLabel(reserveShares)
       // Two-dimension groups: "<profile> <quantile>" and "<profile> <measure>".
       const quantilesBy = new Map<string, Partial<Record<string, number>>>()
       for (const result of quantiles) {
@@ -638,6 +648,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
               latest(fableResetsBy.get(profile)),
               latest(fableRefusedBy.get(profile)),
             ),
+            reserveFraction: reserveShare(latest(reserveBy.get(profile))),
           }
         })
         .sort((a, b) => a.profile.localeCompare(b.profile))

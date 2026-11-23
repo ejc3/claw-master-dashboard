@@ -12,6 +12,7 @@ import {
   foldAliases,
   gaugeQuery,
   parseAccountAliases,
+  reserveShare,
   SNAPSHOT_LOOKBACK_MS,
   selectSource,
   splitLabel,
@@ -329,7 +330,7 @@ describe('createCloudWatchSource', () => {
     const { src, requests } = source(snapshotAnswers())
     const snapshot = await src.snapshot()
     const latest = t0 + 9 * 60_000
-    expect(requests).toHaveLength(16)
+    expect(requests).toHaveLength(17)
     const expressions = requests.map((r) => r.expression)
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
@@ -341,6 +342,9 @@ describe('createCloudWatchSource', () => {
       'SELECT MAX("claw_master.anthropic.ratelimit") FROM "ClawMaster" WHERE "window" = \'5h\' GROUP BY profile, measure',
     )
     expect(expressions).toContain('SELECT MAX("claw_master.sessions.tracked") FROM "ClawMaster"')
+    expect(expressions).toContain(
+      'SELECT MAX("claw_master.quota.reserve_fraction") FROM "ClawMaster" GROUP BY profile',
+    )
     expect(expressions).toContain(
       'SELECT SUM("claw_master.anthropic.ratelimit.state") FROM "ClawMaster" WHERE measure = \'status\' AND "window" = \'all\' GROUP BY profile, "value"',
     )
@@ -378,6 +382,8 @@ describe('createCloudWatchSource', () => {
       lengthMs: FIVE_HOURS_MS,
     })
     expect(alpha.rateLimitedUntil).toBeNull()
+    // No reserve gauge for it: no reserve.
+    expect(alpha.reserveFraction).toBeNull()
     expect(alpha.tokenExpiresAt).toBe(latest + 16_000 * 1000)
     expect(alpha.latencyMs).toEqual({ p50: 3600, p95: 18_000, p99: 33_000 })
     expect(bravo.band).toBe('exhausted')
@@ -859,5 +865,15 @@ describe('account aliases', () => {
       'alpha',
       'acct-0000cccc',
     ])
+  })
+})
+
+describe('reserveShare', () => {
+  it("is the reserve's share of the week, null for no reading or zero, and at most all of it", () => {
+    expect(reserveShare([0, 0.3])).toBe(0.3)
+    expect(reserveShare([0, 1.5])).toBe(1)
+    expect(reserveShare([0, 0])).toBeNull()
+    expect(reserveShare([0, Number.NaN])).toBeNull()
+    expect(reserveShare(null)).toBeNull()
   })
 })
