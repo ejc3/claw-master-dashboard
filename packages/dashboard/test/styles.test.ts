@@ -144,13 +144,12 @@ describe('the sparkle', () => {
 })
 
 describe('a subscription out until its 5-hour window resets', () => {
-  it('greys its bar and ring, not the button, and does not strike its name, after the strike rule', () => {
-    const grey = css.search(
-      /\.cmd-account\[data-five-out\] \.cmd-account-marks \{\s*filter: grayscale\(1\);\s*opacity: 0\.45;/,
-    )
+  it('dims only its week bar, in its own color, and neither greys nor strikes its name, after the strike rule', () => {
+    const grey = css.search(/\.cmd-account\[data-five-out\] \.cmd-meter-week \{\s*opacity: 0\.45;/)
     const unstruck = css.search(
-      /\.cmd-account\[data-five-out\] \.cmd-account-name \{\s*text-decoration: none;/,
+      /\.cmd-account\[data-five-out\] \.cmd-account-name \{\s*color: inherit;\s*text-decoration: none;/,
     )
+    expect(css).not.toMatch(/\[data-five-out\][^{]*\{[^}]*grayscale/)
     const struck = css.indexOf('.cmd-account[data-open="false"] .cmd-account-name {')
     expect(grey).toBeGreaterThan(-1)
     expect(unstruck).toBeGreaterThan(struck)

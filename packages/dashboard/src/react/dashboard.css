@@ -1508,12 +1508,14 @@
   }
   /* Out only for now (its 5-hour window): its bar and ring greyed, its name muted but not struck
      through. The button itself is not dimmed, so its focus ring keeps full strength. */
-  .cmd-account[data-five-out] .cmd-account-marks {
-    filter: grayscale(1);
+  /* Out only until its 5-hour window resets: its week is still there, so its bar keeps its color,
+     dimmed; the name is neither greyed nor struck like a subscription out for the week. */
+  .cmd-account[data-five-out] .cmd-meter-week {
     opacity: 0.45;
   }
 
   .cmd-account[data-five-out] .cmd-account-name {
+    color: inherit;
     text-decoration: none;
   }
 
