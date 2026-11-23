@@ -64,15 +64,25 @@ describe('earlyResetTimes', () => {
   })
 
   it('counts only those in [from, to)', () => {
-    const used = buckets(start, [0.98, 0, 0.01, 0.9, 0])
-    const resets = earlyResetTimes(
-      used,
-      countdown(start + 73 * HOUR_MS),
-      STEP,
+    const used = buckets(start, [0.98, 0, 0.01, 0.9, 0, 0.01, 0.95, 0])
+    const due = countdown(start + 73 * HOUR_MS)
+    // From the bucket after the first fall, to the last bucket: the middle one only.
+    expect(earlyResetTimes(used, due, STEP, start + 2 * STEP, start + 7 * STEP)).toEqual([
+      start + 4 * STEP,
+    ])
+    expect(earlyResetTimes(used, due, STEP, start + 2 * STEP, start + 7 * STEP + 1)).toEqual([
+      start + 4 * STEP,
+      start + 7 * STEP,
+    ])
+  })
+
+  it('leaves out a fall that keeps much of what was used: a correction or a raised limit', () => {
+    const due = countdown(start + 73 * HOUR_MS)
+    expect(earlyResetTimes(buckets(start, [0.8, 0.8, 0.45]), due, STEP, 0, NOW)).toEqual([])
+    // What was used since the reset, in the bucket after it, is still a reset.
+    expect(earlyResetTimes(buckets(start, [1, 1, 0.04]), due, STEP, 0, NOW)).toEqual([
       start + 2 * STEP,
-      NOW,
-    )
-    expect(resets).toEqual([start + 4 * STEP])
+    ])
   })
 })
 
@@ -94,7 +104,8 @@ describe('earlyResets', () => {
         ],
         weeklyResetsInSeconds: ['a', 'b', 'c'].map((key) => ({ key, points: left })),
         fableUsed: [
-          { key: 'a', points: buckets(start, [0.5, 0.5, 0, 0, 0, 0, 0, 0]) },
+          // The week's reset reaches Fable's reading two buckets later: still that one reset.
+          { key: 'a', points: buckets(start, [0.5, 0.5, 0.5, 0.5, 0, 0, 0, 0]) },
           { key: 'b', points: buckets(start, [0.7, 0.7, 0, 0, 0.6, 0, 0, 0]) },
         ],
         fableResetsInSeconds: ['a', 'b'].map((key) => ({ key, points: left })),

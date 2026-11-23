@@ -221,15 +221,31 @@ export interface EarlyResets {
 /** How far a used share must fall from one bucket to the next to be a reset, not a correction. */
 const EARLY_RESET_DROP = 0.1
 
+/**
+ * How much of the higher reading the lower one may keep and still be a reset: a reset starts the
+ * allowance from nothing, so what is left is only what was used since. A fall that keeps more (a
+ * poll's correction, a raised limit) is not one.
+ */
+const EARLY_RESET_KEEPS = 0.25
+
+/**
+ * How long after a week's early reset a Fable fall is still that reset: the server learns the two
+ * from different readings (any response or poll for the week, a poll or a Fable response for
+ * Fable), a few polls apart at most.
+ */
+const SAME_RESET_MS = 30 * 60_000
+
 /** How old the countdown read before a fall may be to say when the reset was due. */
 const COUNTDOWN_MAX_AGE_MS = HOUR_MS
 
 /**
  * The resets in [from, to) that came early: where the used share falls by at least a tenth from one
  * bucket to the next while the reset due, by the countdown read before the higher bucket, was not
- * until after the lower bucket ended. The countdown is taken from before the higher bucket because
- * a bucket holding an ordinary reset already reads the next week's countdown as its highest. Each
- * is placed at the lower bucket's start, the first reading of the new allowance.
+ * until after the lower bucket ended, and the lower reading keeps at most a quarter of the higher
+ * (a reset starts from nothing). The countdown is taken from before the higher bucket because a
+ * bucket holding an ordinary reset already reads the next week's countdown as its highest. Each is
+ * placed at the lower bucket's start: the first bucket whose highest reading is the new allowance's
+ * (the reset itself fell within the bucket before).
  */
 export function earlyResetTimes(
   used: ReadonlyArray<[EpochMs, number]>,
@@ -245,6 +261,7 @@ export function earlyResetTimes(
     const [highAt, high] = readings[i - 1] as [EpochMs, number]
     const [lowAt, low] = readings[i] as [EpochMs, number]
     if (lowAt < from || lowAt >= to || high - low < EARLY_RESET_DROP) continue
+    if (low > high * EARLY_RESET_KEEPS) continue
     // Neighbouring buckets only: across a gap in the readings nothing says when it fell.
     if (lowAt - highAt > stepMs) continue
     let due: EpochMs | null = null
@@ -259,8 +276,8 @@ export function earlyResetTimes(
 
 /**
  * Each subscription's early resets in [from, to) (earlyResetTimes): of its week, and of its Fable
- * allowance on its own. A Fable fall within a bucket of an early weekly reset is that reset, not a
- * second one.
+ * allowance on its own. A Fable fall from a bucket before an early weekly reset to half an hour after
+ * it is that reset, not a second one.
  */
 export function earlyResets(
   history: {
@@ -294,7 +311,7 @@ export function earlyResets(
       history.stepMs,
       from,
       to,
-    ).filter((t) => !weekly.some((w) => Math.abs(w - t) <= history.stepMs))
+    ).filter((t) => !weekly.some((w) => t >= w - history.stepMs && t <= w + SAME_RESET_MS))
     if (weekly.length > 0 || fable.length > 0) out.set(profile, { weekly, fable })
   }
   return out
