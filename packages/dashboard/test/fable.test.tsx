@@ -212,7 +212,7 @@ describe('the Fable allowance on the page', () => {
     expect([left('weekly'), left('fable')]).toEqual(['10%', '10%'])
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
-      'Fable 25% used · the week leaves room for 20% more · resets with the week',
+      'Fable 25% used · the week leaves room for 20% more',
     )
   })
 
@@ -250,7 +250,8 @@ describe('the Fable allowance on the page', () => {
     )
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
-    expect(detail).toContain('Fable 25% used · resets with the week')
+    expect(detail).toContain('Fable 25% used')
+    expect(detail).not.toContain('resets with the week')
     expect(detail).not.toContain('room')
   })
 
@@ -271,7 +272,8 @@ describe('the Fable allowance on the page', () => {
     )
     act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
     const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
-    expect(detail).toContain('Fable 31% used · resets with the week')
+    expect(detail).toContain('Fable 31% used')
+    expect(detail).not.toContain('resets with the week')
     expect(detail).not.toContain('room')
     // Right now it can take no Fable at all.
     expect(fableLeft(held, NOW)).toBe(0)
