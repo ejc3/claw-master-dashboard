@@ -482,8 +482,20 @@
   .cmd-meter-week {
     position: absolute;
     inset: 0 auto 0 0;
+    overflow: hidden;
     border-radius: 5px;
     background: var(--cmd-account-fill, var(--cmd-fill));
+  }
+
+  /* A reserve's share, the last of the week the pool may use: hatched as on the weekly chart. */
+  .cmd-meter-reserve {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--cmd-ink) 55%, transparent) 0 1.25px,
+      transparent 1.25px 4px
+    );
   }
 
   /* Where Fable's reach ends on the week: a vertical line just proud of the bar. */
@@ -1473,6 +1485,12 @@
 
     .cmd-ring[data-level="unknown"] .cmd-ring-track {
       stroke: CanvasText;
+    }
+
+    /* The hatch crosses a CanvasText fill: Canvas lines keep it visible. */
+    .cmd-meter-reserve {
+      forced-color-adjust: none;
+      background: repeating-linear-gradient(135deg, Canvas 0 1.25px, transparent 1.25px 4px);
     }
 
     /* Fable's line crosses a CanvasText fill: a different system color keeps it visible. */
