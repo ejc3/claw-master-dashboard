@@ -142,3 +142,14 @@ describe('the sparkle', () => {
     expect(SPARKLE_MS).toBeGreaterThanOrEqual(duration + Math.max(...delays))
   })
 })
+
+describe('a subscription out until its 5-hour window resets', () => {
+  it('greys the whole cell and does not strike its name', () => {
+    expect(css).toMatch(
+      /\.cmd-account\[data-five-out\] > button \{\s*filter: grayscale\(1\);\s*opacity: 0\.5;/,
+    )
+    expect(css).toMatch(
+      /\.cmd-account\[data-five-out\] \.cmd-account-name \{\s*text-decoration: none;/,
+    )
+  })
+})

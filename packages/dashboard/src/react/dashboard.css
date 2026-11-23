@@ -1464,6 +1464,16 @@
       fill: GrayText;
     }
   }
+  /* Out until its 5-hour window resets: the whole cell greyed, the name not struck through. */
+  .cmd-account[data-five-out] > button {
+    filter: grayscale(1);
+    opacity: 0.5;
+  }
+
+  .cmd-account[data-five-out] .cmd-account-name {
+    text-decoration: none;
+  }
+
   /* A subscription that just took work again: stars burst around its bars, which glow once. */
   .cmd-account {
     position: relative;

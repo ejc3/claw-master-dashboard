@@ -105,3 +105,36 @@ describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
     expect(bar('max').getAttribute('data-left')).toBe('50%')
   })
 })
+
+describe('a subscription out until its 5-hour window resets', () => {
+  it('is greyed out, not struck through; one out for its week is not greyed', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    const window = (used: number) => ({
+      usedFraction: used,
+      resetsAt: NOW + 46 * 60_000,
+      lengthMs: 5 * HOUR_MS,
+    })
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[
+            sub('team-waiting', 0.27, window(1)),
+            sub('team-spent', 1, window(0.4)),
+            sub('team-open', 0.3, window(0.5)),
+          ]}
+          now={NOW}
+        />,
+      ),
+    )
+    const cell = (name: string) =>
+      [...container.querySelectorAll('.cmd-account')].find((c) =>
+        c.textContent?.includes(name),
+      ) as HTMLElement
+    expect(cell('waiting').hasAttribute('data-five-out')).toBe(true)
+    expect(cell('spent').hasAttribute('data-five-out')).toBe(false)
+    expect(cell('open').hasAttribute('data-five-out')).toBe(false)
+  })
+})

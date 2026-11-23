@@ -412,6 +412,9 @@ export function PoolAccounts(props: {
           const fiveLeft = fiveHourLeft(p, props.now)
           const five = fiveLeft === null ? null : 1 - fiveLeft
           const available = hasHeadroom(p, props.now)
+          // Out only until its 5-hour window resets (its week has more): greyed out, not struck.
+          const fiveOut =
+            !weekUsedUp(p, props.now) && (fiveHourAt(p.fiveHour, props.now)?.usedFraction ?? 0) >= 1
           // Only a plan with a Fable allowance gets Fable's line: what is left of it this week, like
           // the bar itself, whether or not a 5-hour window or rate limit holds the subscription now.
           const fable = p.fable == null ? undefined : fableRoom(p, props.now)
@@ -420,6 +423,7 @@ export function PoolAccounts(props: {
               key={p.profile}
               className="cmd-account"
               data-open={available}
+              data-five-out={fiveOut || undefined}
               data-returned={returned.has(p.profile) || undefined}
             >
               {returned.has(p.profile) && (
