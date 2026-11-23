@@ -1464,14 +1464,21 @@
       fill: GrayText;
     }
   }
-  /* Out until its 5-hour window resets: the whole cell greyed, the name not struck through. */
-  .cmd-account[data-five-out] > button {
+  /* Out only for now (its 5-hour window): its bar and ring greyed, its name muted but not struck
+     through. The button itself is not dimmed, so its focus ring keeps full strength. */
+  .cmd-account[data-five-out] .cmd-account-marks {
     filter: grayscale(1);
-    opacity: 0.5;
+    opacity: 0.45;
   }
 
   .cmd-account[data-five-out] .cmd-account-name {
     text-decoration: none;
+  }
+
+  @media (forced-colors: active) {
+    .cmd-account[data-five-out] .cmd-account-name {
+      color: GrayText;
+    }
   }
 
   /* A subscription that just took work again: stars burst around its bars, which glow once. */

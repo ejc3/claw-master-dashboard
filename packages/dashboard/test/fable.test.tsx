@@ -215,6 +215,25 @@ describe('the Fable allowance on the page', () => {
     )
   })
 
+  it('says the week leaves no room when it rounds to nothing, not "room for 0% more"', () => {
+    const container = mount(
+      <PoolAccounts
+        profiles={[
+          sub(
+            'team-india',
+            { usedFraction: 0.25, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+            0.999,
+          ),
+        ]}
+        now={NOW}
+      />,
+    )
+    act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
+    const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
+    expect(detail).toContain('Fable 25% used · the week leaves no room for more')
+    expect(detail).not.toContain('0% more')
+  })
+
   it('keeps Fable as the week does while a 5-hour window holds the subscription: no talk of the week', () => {
     // 27% of the week used leaves room for more than the 69% of the allowance that is left.
     const held = {

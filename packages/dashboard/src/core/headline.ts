@@ -86,6 +86,20 @@ export function blocked(profile: ProfileStatus, now: EpochMs): Blocked | null {
 }
 
 /**
+ * Whether a subscription is out only for now, its week having more: its 5-hour window used up
+ * (and Anthropic no longer taking its work), or Anthropic rate limiting it until before its week
+ * resets. Not when its login has expired or it has no reading.
+ */
+export function outForNow(profile: ProfileStatus, now: EpochMs): boolean {
+  const b = blocked(profile, now)
+  if (b === null || weekUsedUp(profile, now)) return false
+  if (b.reason === 'used-up') return true
+  if (b.reason !== 'rate-limited') return false
+  const weekResets = profile.weekly.resetsAt
+  return b.until === null || weekResets === null || b.until < weekResets - 60_000
+}
+
+/**
  * Whether the usage poll reads a subscription's week or open 5-hour window as used up while
  * Anthropic is still accepting its work: nearly out, its last percent or so still taking work.
  */

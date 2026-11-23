@@ -28,6 +28,7 @@ import {
   HOUR_MS,
   hasHeadroom,
   noFiveHourLimit,
+  outForNow,
   type PoolGaps,
   type PoolTone,
   type ProfileStatus,
@@ -292,7 +293,8 @@ function FableDetail(props: { profile: ProfileStatus; now: EpochMs }) {
   const fable = fableAt(profile.fable, now)
   const used = share(fable.usedFraction)
   const room = fableRoom(profile, now)
-  const weekLimits = used !== null && room !== null && room > 0 && room < 1 - used - 0.005
+  const refused = fable.refusedUntil !== null && fable.refusedUntil > now
+  const weekLimits = !refused && used !== null && room !== null && room < 1 - used - 0.005
   const resets =
     fable.resetsAt === null || fable.resetsAt <= now
       ? ''
@@ -302,7 +304,11 @@ function FableDetail(props: { profile: ProfileStatus; now: EpochMs }) {
   return (
     <li>
       {`Fable ${used === null ? 'no reading' : `${formatPercent(used)} used`}${
-        weekLimits ? ` · the week leaves room for ${formatPercent(room)} more` : ''
+        !weekLimits || room === null
+          ? ''
+          : room < 0.005
+            ? ' · the week leaves no room for more'
+            : ` · the week leaves room for ${formatPercent(room)} more`
       }${resets}`}
     </li>
   )
@@ -412,9 +418,8 @@ export function PoolAccounts(props: {
           const fiveLeft = fiveHourLeft(p, props.now)
           const five = fiveLeft === null ? null : 1 - fiveLeft
           const available = hasHeadroom(p, props.now)
-          // Out only until its 5-hour window resets (its week has more): greyed out, not struck.
-          const fiveOut =
-            !weekUsedUp(p, props.now) && (fiveHourAt(p.fiveHour, props.now)?.usedFraction ?? 0) >= 1
+          // Out only for now (its 5-hour window, or a rate limit before the week resets): greyed.
+          const fiveOut = outForNow(p, props.now)
           // Only a plan with a Fable allowance gets Fable's line: what is left of it this week, like
           // the bar itself, whether or not a 5-hour window or rate limit holds the subscription now.
           const fable = p.fable == null ? undefined : fableRoom(p, props.now)

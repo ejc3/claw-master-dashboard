@@ -77,6 +77,7 @@ export {
   nextAvailable,
   nextRunOut,
   noFiveHourLimit,
+  outForNow,
   POLL_FULL_LEFT,
   pollSaysUsedUp,
   type RunOut,
