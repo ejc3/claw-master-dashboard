@@ -2,8 +2,9 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { HOUR_MS } from '../src/core/index'
+import { HOUR_MS, type ProfileStatus, WEEK_MS } from '../src/core/index'
 import { LineChart } from '../src/react/LineChart'
+import { PoolAccounts } from '../src/react/Pool'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -92,5 +93,64 @@ describe("a reserve's hatch on a stacked chart", () => {
     expect(ys[0]).toBeCloseTo(bottom - 0.3 * scale)
     expect(ys[1]).toBeCloseTo(bottom - 0.2 * scale)
     expect(ys.slice(2)).toEqual([bottom, bottom])
+  })
+})
+
+const sub = (profile: string, weekUsed: number, reserveFraction?: number): ProfileStatus => ({
+  profile,
+  band: 'ok',
+  weekly: { usedFraction: weekUsed, resetsAt: NOW + 50 * HOUR_MS, lengthMs: WEEK_MS },
+  fiveHour: null,
+  rateLimitedUntil: null,
+  tokenExpiresAt: null,
+  latencyMs: { p50: null, p95: null, p99: null },
+  ...(reserveFraction === undefined ? {} : { reserveFraction }),
+})
+
+describe("a reserve's hatch on a subscription's week bar", () => {
+  it('hatches the left of the fill up to the reserve, never past what is left, and says so', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() =>
+      root.render(
+        <PoolAccounts
+          profiles={[sub('team-held', 0.4, 0.3), sub('team-low', 0.85, 0.3), sub('team-free', 0.4)]}
+          now={NOW}
+        />,
+      ),
+    )
+    const row = (name: string) =>
+      [...container.querySelectorAll('.cmd-account')].find(
+        (e) => e.querySelector('.cmd-account-name')?.textContent === name,
+      ) as Element
+    const hatch = (name: string) =>
+      row(name).querySelector<HTMLElement>('.cmd-meter-week .cmd-meter-reserve')
+    // 30% of the week held back, of 60% left: half the fill.
+    expect(hatch('held')?.dataset.reserve).toBe('30%')
+    expect(hatch('held')?.style.width).toBe('50%')
+    // Only 15% left: all of it is the reserve's.
+    expect(hatch('low')?.dataset.reserve).toBe('15%')
+    expect(hatch('low')?.style.width).toBe('100%')
+    expect(hatch('free')).toBeNull()
+    expect(row('held').textContent).toContain('reserve holds back 30% of the week')
+    expect(container.querySelector('.cmd-accounts-legend')?.textContent).toContain(
+      'hatched: held back by its reserve',
+    )
+    act(() => (row('held').querySelector('button') as HTMLButtonElement).click())
+    expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
+      'Its reserve holds back the last 30% of the week from the pool',
+    )
+  })
+
+  it('has no hatch and no legend for it when no subscription has a reserve', () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    roots.push(root)
+    act(() => root.render(<PoolAccounts profiles={[sub('team-free', 0.4)]} now={NOW} />))
+    expect(container.querySelector('.cmd-meter-reserve')).toBeNull()
+    expect(container.querySelector('.cmd-accounts-legend')?.textContent).not.toContain('hatched')
   })
 })

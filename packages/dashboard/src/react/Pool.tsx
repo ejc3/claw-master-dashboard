@@ -85,15 +85,19 @@ const levelOf = (used: number | null) =>
  * One subscription's week as a horizontal bar of what is left, in its own color, and across it a
  * vertical line where Fable's reach ends: how much of the week Fable could still use, on the same axis,
  * so never past the week's fill (Fable may use at most FABLE_SHARE_OF_WEEK of it). Dashed when there
- * is no reading; no line when the week is used up.
+ * is no reading; no line when the week is used up. A reserve's share of the week, the last of it the
+ * pool may use, is hatched from the left, never past what is left.
  */
 function WeekMeter(props: {
   used: number | null
   /** The Fable allowance left (0–1, as fableRoom: what is left this week); undefined for a plan without one. */
   fable?: number | null
+  /** The share of the week the owner's reserve holds back from the pool (0–1); 0 for none. */
+  reserve?: number
   color: string
 }) {
   const left = props.used === null ? 0 : Math.max(0, 1 - props.used)
+  const reserve = Math.min(Math.max(0, props.reserve ?? 0), left)
   const fable =
     props.fable == null ? 0 : Math.min(Math.max(0, props.fable) * FABLE_SHARE_OF_WEEK, left)
   return (
@@ -104,7 +108,17 @@ function WeekMeter(props: {
       data-left={pct(left)}
       style={{ '--cmd-account-fill': props.color } as CSSProperties}
     >
-      {left > 0 && <span className="cmd-meter-week" style={{ width: pct(left) }} />}
+      {left > 0 && (
+        <span className="cmd-meter-week" style={{ width: pct(left) }}>
+          {reserve > 0 && (
+            <span
+              className="cmd-meter-reserve"
+              data-reserve={pct(reserve)}
+              style={{ width: pct(reserve / left) }}
+            />
+          )}
+        </span>
+      )}
       {props.fable !== undefined && (
         <span
           className="cmd-meter-fable"
@@ -526,6 +540,7 @@ export function PoolAccounts(props: {
                   <WeekMeter
                     used={weekly}
                     color={colors.get(p.profile) ?? ''}
+                    reserve={p.reserveFraction ?? 0}
                     {...(fable === undefined ? {} : { fable })}
                   />
                   {/* No 5-hour limit, no ring: an empty space keeps the bars lined up. */}
@@ -546,6 +561,10 @@ export function PoolAccounts(props: {
                     fable === undefined
                       ? ''
                       : `, Fable ${fable === null ? 'no reading' : `${formatPercent(fable)} left`}`
+                  }${
+                    (p.reserveFraction ?? 0) > 0
+                      ? `, reserve holds back ${formatPercent(p.reserveFraction ?? 0)} of the week`
+                      : ''
                   }${available ? '' : ', not available'}${earlyResetsSaid(
                     props.earlyResets?.get(p.profile),
                   )}`}
@@ -556,7 +575,7 @@ export function PoolAccounts(props: {
         })}
       </ul>
       <p className="cmd-accounts-legend" aria-hidden="true">
-        {`Bar: week left${props.profiles.some((p) => p.fable != null) ? ' (line: Fable)' : ''} · ring: 5 hours left${
+        {`Bar: week left${barKey(props.profiles)} · ring: 5 hours left${
           props.profiles.some((p) => {
             const r = props.earlyResets?.get(p.profile)
             return (
@@ -587,6 +606,9 @@ export function PoolAccounts(props: {
           {shown.email != null && <p className="cmd-account-email">{shown.email}</p>}
           <ul>
             <WindowDetail name="Weekly" who={shown.profile} window={shown.weekly} now={props.now} />
+            {(shown.reserveFraction ?? 0) > 0 && (
+              <li>{`Its reserve holds back the last ${formatPercent(shown.reserveFraction ?? 0)} of the week from the pool`}</li>
+            )}
             {(() => {
               const next = props.unusedAtReset?.find((r) => r.profile === shown.profile)
               return next === undefined ? null : (
@@ -636,6 +658,17 @@ export function PoolAccounts(props: {
 }
 
 const asPercent = (v: number) => `${Math.round(v * 100)}%`
+
+/** What marks on the week bars mean, in one bracket: Fable's line, a reserve's hatch, or both. */
+function barKey(profiles: readonly ProfileStatus[]): string {
+  const keys = [
+    ...(profiles.some((p) => p.fable != null) ? ['line: Fable'] : []),
+    ...(profiles.some((p) => (p.reserveFraction ?? 0) > 0)
+      ? ['hatched: held back by its reserve']
+      : []),
+  ]
+  return keys.length === 0 ? '' : ` (${keys.join('; ')})`
+}
 
 /**
  * A capacity chart's top: its highest point, up to the next whole subscription (100%), and never
