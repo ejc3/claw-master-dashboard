@@ -159,8 +159,9 @@ describe('the Fable allowance on the page', () => {
       ) as Element
     const bars = (name: string) =>
       [...row(name).querySelectorAll('[data-window]')].map((b) => b.getAttribute('data-window'))
-    expect(bars('alpha')).toEqual(['weekly', 'fable', 'fiveHour'])
-    expect(bars('charlie')).toEqual(['weekly', 'fiveHour'])
+    // No 5-hour limit on these plans: no ring.
+    expect(bars('alpha')).toEqual(['weekly', 'fable'])
+    expect(bars('charlie')).toEqual(['weekly'])
     expect(row('bravo').querySelector('[data-window="fable"]')?.getAttribute('data-level')).toBe(
       'full',
     )

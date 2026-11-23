@@ -1627,7 +1627,7 @@ describe('account colors', () => {
       profile: 'claude-a',
       band: 'ok',
       weekly: { usedFraction: 0.3, resetsAt: NOW + 50 * HOUR_MS, lengthMs: 168 * HOUR_MS },
-      fiveHour: null,
+      fiveHour: { usedFraction: 0.2, resetsAt: NOW + HOUR_MS, lengthMs: 5 * HOUR_MS },
       rateLimitedUntil: null,
       tokenExpiresAt: null,
       latencyMs: { p50: null, p95: null, p99: null },

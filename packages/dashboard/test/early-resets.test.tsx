@@ -143,7 +143,7 @@ const sub = (profile: string): ProfileStatus => ({
 })
 
 describe('the early-reset badges', () => {
-  it('count a red week and a blue Fable beside the name, say them, and list them in the detail', () => {
+  it('count a red week and a blue Fable beside the name of a subscription that is out, say them, and list them in the detail', () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -151,7 +151,11 @@ describe('the early-reset badges', () => {
     act(() =>
       root.render(
         <PoolAccounts
-          profiles={[sub('team-gift'), sub('team-plain')]}
+          profiles={[
+            { ...sub('team-gift'), rateLimitedUntil: NOW + 30 * 60_000 },
+            sub('team-plain'),
+            sub('team-open'),
+          ]}
           now={NOW}
           earlyResets={
             new Map([
@@ -159,6 +163,8 @@ describe('the early-reset badges', () => {
                 'team-gift',
                 { weekly: [NOW - 2 * HOUR_MS, NOW - 30 * HOUR_MS], fable: [NOW - 5 * HOUR_MS] },
               ],
+              // Available: its resets are in its detail, not on its cell.
+              ['team-open', { weekly: [NOW - 3 * HOUR_MS], fable: [] }],
             ])
           }
         />,
@@ -178,6 +184,8 @@ describe('the early-reset badges', () => {
     // Beside the name, inside the label, so the bar and ring stay where every row has them.
     expect(gift.querySelector('.cmd-account-label .cmd-reset-badges')).not.toBeNull()
     expect(plain.querySelector('.cmd-reset-badges')).toBeNull()
+    const open = cells.find((c) => c.textContent?.includes('open')) as HTMLElement
+    expect(open.querySelector('.cmd-reset-badges')).toBeNull()
     expect(gift.querySelector('.cmd-visually-hidden')?.textContent).toContain(
       'week reset early twice, Fable reset early once this past week',
     )

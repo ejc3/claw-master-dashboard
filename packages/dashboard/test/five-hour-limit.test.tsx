@@ -75,7 +75,7 @@ describe('a subscription with no 5-hour limit', () => {
 })
 
 describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
-  it("shows the week's room, dimmed; one with a 5-hour window is not dimmed", () => {
+  it('has no ring, only a space that keeps the bars lined up; one with a 5-hour window has its ring', () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -95,14 +95,16 @@ describe('the 5-hour bar of a subscription with no 5-hour limit', () => {
         />,
       ),
     )
-    const bar = (name: string) =>
-      [...container.querySelectorAll('.cmd-account')]
-        .find((e) => e.querySelector('.cmd-account-name')?.textContent === name)
-        ?.querySelector('[data-window="fiveHour"]') as HTMLElement
-    expect(bar('ultra').hasAttribute('data-dim')).toBe(true)
-    expect(bar('ultra').getAttribute('data-left')).toBe('75%')
-    expect(bar('max').hasAttribute('data-dim')).toBe(false)
-    expect(bar('max').getAttribute('data-left')).toBe('50%')
+    const cell = (name: string) =>
+      [...container.querySelectorAll('.cmd-account')].find(
+        (e) => e.querySelector('.cmd-account-name')?.textContent === name,
+      ) as HTMLElement
+    expect(cell('ultra').querySelector('[data-window="fiveHour"]')).toBeNull()
+    expect(cell('ultra').querySelector('.cmd-account-marks > .cmd-ring-none')).not.toBeNull()
+    expect(cell('max').querySelector('.cmd-ring-none')).toBeNull()
+    expect(cell('max').querySelector('[data-window="fiveHour"]')?.getAttribute('data-left')).toBe(
+      '50%',
+    )
   })
 })
 
