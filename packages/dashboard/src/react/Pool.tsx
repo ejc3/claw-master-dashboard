@@ -361,7 +361,13 @@ function FableDetail(props: { profile: ProfileStatus; now: EpochMs }) {
   const used = share(fable.usedFraction)
   const room = fableRoom(profile, now)
   const refused = fable.refusedUntil !== null && fable.refusedUntil > now
-  const weekLimits = !refused && used !== null && room !== null && room < 1 - used - 0.005
+  // A used-up week is the weekly line's to say ("100% used"), and the header's ("Out").
+  const weekLimits =
+    !refused &&
+    !weekUsedUp(profile, now) &&
+    used !== null &&
+    room !== null &&
+    room < 1 - used - 0.005
   const resets =
     fable.resetsAt === null || fable.resetsAt <= now
       ? ''

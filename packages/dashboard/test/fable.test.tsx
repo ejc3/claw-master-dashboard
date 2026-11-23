@@ -234,6 +234,25 @@ describe('the Fable allowance on the page', () => {
     expect(detail).not.toContain('0% more')
   })
 
+  it('says nothing of the week on the Fable line when the week is used up: the weekly line does', () => {
+    const container = mount(
+      <PoolAccounts
+        profiles={[
+          sub(
+            'team-juliet',
+            { usedFraction: 0.25, resetsAt: NOW + 50 * HOUR_MS, refusedUntil: null },
+            1,
+          ),
+        ]}
+        now={NOW}
+      />,
+    )
+    act(() => (container.querySelector('.cmd-account button') as HTMLButtonElement).click())
+    const detail = container.querySelector('.cmd-account-detail')?.textContent ?? ''
+    expect(detail).toContain('Fable 25% used · resets with the week')
+    expect(detail).not.toContain('room')
+  })
+
   it('keeps Fable as the week does while a 5-hour window holds the subscription: no talk of the week', () => {
     // 27% of the week used leaves room for more than the 69% of the allowance that is left.
     const held = {
