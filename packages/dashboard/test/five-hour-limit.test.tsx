@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HOUR_MS, noFiveHourLimit, type ProfileStatus, WEEK_MS } from '../src/core/index'
-import { PoolAccounts } from '../src/react/Pool'
+import { backIn, PoolAccounts } from '../src/react/Pool'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -152,5 +152,16 @@ describe('a subscription out until its 5-hour window resets', () => {
     expect(state('spent')).toEqual(['false', false])
     expect(state('login')).toEqual(['false', false])
     expect(state('open')).toEqual(['true', false])
+  })
+})
+
+describe("when a subscription out for now is back, in its ring's place", () => {
+  it('reads in whole minutes under an hour, as the detail does, hours under two days, else days, never zero', () => {
+    expect(backIn(10_000)).toBe('1m')
+    expect(backIn(47 * 60_000)).toBe('47m')
+    expect(backIn(59.5 * 60_000)).toBe('59m')
+    expect(backIn(2 * HOUR_MS + 59 * 60_000)).toBe('3h')
+    expect(backIn(47 * HOUR_MS)).toBe('47h')
+    expect(backIn(50 * HOUR_MS)).toBe('2d')
   })
 })

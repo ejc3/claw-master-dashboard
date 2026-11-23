@@ -521,11 +521,25 @@
 
   /* The 5-hour window: a small ring of what is left, clockwise from the top. */
   .cmd-ring,
-  .cmd-ring-none {
+  .cmd-ring-none,
+  .cmd-ring-back {
     display: block;
     flex: none;
     width: 20px;
     height: 20px;
+  }
+
+  /* Out for now: when it is back, in the ring's place and size. */
+  .cmd-ring-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cmd-ink-2);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
 
   .cmd-ring-track,

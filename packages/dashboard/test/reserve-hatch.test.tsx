@@ -134,13 +134,13 @@ describe("a reserve's hatch on a subscription's week bar", () => {
     expect(hatch('low')?.dataset.reserve).toBe('15%')
     expect(hatch('low')?.style.width).toBe('100%')
     expect(hatch('free')).toBeNull()
-    expect(row('held').textContent).toContain('reserve holds back 30% of the week')
+    expect(row('held').textContent).toContain('reserve: last 30% of the week')
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toContain(
       'hatched: held back by its reserve',
     )
     act(() => (row('held').querySelector('button') as HTMLButtonElement).click())
     expect(container.querySelector('.cmd-account-detail')?.textContent).toContain(
-      'Its reserve holds back the last 30% of the week from the pool',
+      'Reserve: last 30% of the week',
     )
   })
 

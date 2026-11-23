@@ -190,7 +190,7 @@ describe('the banked-reset badges', () => {
     const open = cells.find((c) => c.textContent?.includes('open')) as HTMLElement
     expect(open.querySelector('.cmd-reset-badges')).toBeNull()
     expect(gift.querySelector('.cmd-visually-hidden')?.textContent).toContain(
-      '2 resets banked for the week, 1 reset banked for Fable',
+      '2 Weekly resets, Fable reset',
     )
     expect(container.querySelector('.cmd-accounts-legend')?.textContent).toContain(
       'badge: resets banked (red: week, blue: Fable)',
@@ -200,14 +200,15 @@ describe('the banked-reset badges', () => {
       l.getAttribute('data-window'),
       l.textContent,
     ])
+    // Named as claude.ai's usage page names them, counted only past one.
     expect(banked).toEqual([
-      ['weekly', '2 resets banked: claiming one clears the week now'],
-      ['fable', "1 reset banked: claiming one clears Fable's allowance now"],
+      ['weekly', '2 Weekly resets'],
+      ['fable', 'Fable reset'],
     ])
-    // The reset used this past week is history, without saying who reset it.
+    // The reset used this past week, as short.
     const used = [...container.querySelectorAll('.cmd-reset-line')].map((l) => l.textContent)
     expect(used).toHaveLength(1)
-    expect(used[0]).toMatch(/^Week reset early once this past week: .+$/)
+    expect(used[0]).toMatch(/^Weekly reset used .+$/)
   })
 
   it('leave the legend alone when no subscription that is out has one banked', () => {
