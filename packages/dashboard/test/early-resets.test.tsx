@@ -182,6 +182,8 @@ describe('the banked-reset badges', () => {
       ['weekly', '2'],
       ['fable', '1'],
     ])
+    // Just the number: no icon.
+    expect(gift.querySelector('.cmd-reset-badge svg')).toBeNull()
     // Beside the name, inside the label, so the bar and ring stay where every row has them.
     expect(gift.querySelector('.cmd-account-label .cmd-reset-badges')).not.toBeNull()
     expect(plain.querySelector('.cmd-reset-badges')).toBeNull()
