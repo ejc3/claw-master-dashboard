@@ -53,16 +53,48 @@ export function tableRangeWords(
   return `since ${clock === null ? 'token counting began' : clock(firstAt)}`
 }
 
+/** A query's answer as last seen: its shape (queryShape), where its range ended, the series. */
+export interface KeptAnswer {
+  shape: string
+  end: EpochMs
+  data: Series[]
+}
+
 /**
- * A query's last answer, kept while the next one loads as long as only its range's end moved: not
- * another range's answer under this one's name.
+ * What to show for a query: its answer when ready, else the last one while the next loads, if it
+ * was for the same shape (not another range's or split's) and its range ended at most `maxMoveMs`
+ * before this one's. A failed query, or an answer older than that, shows nothing rather than an
+ * old figure beside a fresh table.
  */
-function useKept(loaded: Loaded<Series[]>, query: SeriesQuery | null): Series[] | null {
-  const kept = useRef<{ shape: string; data: Series[] } | null>(null)
-  if (query === null) return null
+export function keptAnswer(
+  kept: KeptAnswer | null,
+  loaded: Loaded<Series[]>,
+  query: SeriesQuery | null,
+  maxMoveMs: number,
+): { show: Series[] | null; kept: KeptAnswer | null } {
+  if (query === null) return { show: null, kept }
   const shape = queryShape(query)
-  if (loaded.state === 'ready') kept.current = { shape, data: loaded.data }
-  return kept.current?.shape === shape ? kept.current.data : null
+  if (loaded.state === 'ready') {
+    const fresh = { shape, end: loaded.range?.end ?? query.range.end, data: loaded.data }
+    return { show: loaded.data, kept: fresh }
+  }
+  const usable =
+    loaded.state === 'loading' &&
+    kept !== null &&
+    kept.shape === shape &&
+    query.range.end - kept.end <= maxMoveMs
+  return { show: usable ? kept.data : null, kept }
+}
+
+function useKept(
+  loaded: Loaded<Series[]>,
+  query: SeriesQuery | null,
+  maxMoveMs: number,
+): Series[] | null {
+  const kept = useRef<KeptAnswer | null>(null)
+  const next = keptAnswer(kept.current, loaded, query, maxMoveMs)
+  kept.current = next.kept
+  return next.show
 }
 
 /** One row per key with any requests in the range, most first. */
@@ -188,9 +220,13 @@ export function Breakdown(props: {
   const rows = showTokens ? tokenTable : tokensPending || tokenError !== null ? [] : requestRows
   // Each kept while its next answer loads: at seven days the range moves an hour at a time, more
   // than the cost queries' own step, so they reload each hour rather than keep their answer.
-  const peopleData = useKept(costPeople, queries.cost?.people ?? null)
-  const modelData = useKept(costModels, queries.cost?.models ?? null)
-  const requestByModel = useKept(costRequests, queries.cost?.requests ?? null)
+  const peopleData = useKept(costPeople, queries.cost?.people ?? null, props.stepSeconds * 1000)
+  const modelData = useKept(costModels, queries.cost?.models ?? null, props.stepSeconds * 1000)
+  const requestByModel = useKept(
+    costRequests,
+    queries.cost?.requests ?? null,
+    props.stepSeconds * 1000,
+  )
   const priced = useMemo(
     () =>
       peopleData === null || modelData === null || requestByModel === null

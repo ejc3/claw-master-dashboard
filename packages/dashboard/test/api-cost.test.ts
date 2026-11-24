@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { apiCost, apiPriceOf, formatDollars, HOUR_MS, type Series } from '../src/core/index'
+import { keptAnswer } from '../src/react/Breakdown'
 import { breakdownQueries, COST_STEP_SECONDS, SPLITS } from '../src/react/queries'
 
 const T0 = Date.UTC(2026, 10, 23, 12)
@@ -130,5 +131,32 @@ describe('API cost', () => {
     expect(week?.people.stepSeconds).toBe(COST_STEP_SECONDS)
     expect(breakdownQueries(range, 300, people).cost?.models.stepSeconds).toBe(300)
     expect(breakdownQueries(range, 300, machines).cost).toBeNull()
+  })
+})
+
+describe('the cost kept while its next answer loads', () => {
+  const HOUR = 3600_000
+  const range = { start: T0, end: T0 + 7 * 24 * HOUR }
+  const people = SPLITS.find((x) => x.dimension === 'client_account')
+  if (people === undefined) throw new Error('no People split')
+  const query = (end: number) =>
+    breakdownQueries({ start: range.start + end, end: range.end + end }, 3600, people).cost
+      ?.people ?? null
+  const data: Series[] = [s('alice output', [[0, 1]])]
+  const ready = { state: 'ready', data, at: T0, failure: null } as const
+
+  it('keeps it while loading and the range moved at most a step, and only then', () => {
+    const first = keptAnswer(null, ready, query(0), HOUR)
+    expect(first.show).toBe(data)
+    const loading = { state: 'loading' } as const
+    expect(keptAnswer(first.kept, loading, query(HOUR), HOUR).show).toBe(data)
+    // Hours later (a page left hidden): not kept.
+    expect(keptAnswer(first.kept, loading, query(3 * HOUR), HOUR).show).toBeNull()
+    // A failed query shows nothing, not the old figure.
+    const failed = { state: 'error', failure: { message: 'no', status: 500 } } as never
+    expect(keptAnswer(first.kept, failed, query(HOUR), HOUR).show).toBeNull()
+    // Another range's answer never shows under this one.
+    const day = breakdownQueries(range, 300, people).cost?.people ?? null
+    expect(keptAnswer(first.kept, loading, day, HOUR).show).toBeNull()
   })
 })
