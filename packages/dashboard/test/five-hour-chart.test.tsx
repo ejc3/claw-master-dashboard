@@ -82,6 +82,27 @@ describe('the 5-hour chart', () => {
     )
   })
 
+  it('names each subscription it counts, and counts only those the forecast draws', () => {
+    reportedWidth = 900
+    // a and b have 5-hour limits, c has none, d's login has expired (the forecast leaves it out).
+    const expired = { ...profile('d', true), tokenExpiresAt: NOW - HOUR_MS }
+    const container = outlook([
+      profile('a', true),
+      profile('b', true),
+      profile('c', false),
+      expired,
+    ])
+    const figures = [...container.querySelectorAll('figure')]
+    expect(legend(figures[0] as Element)).toEqual(['a', 'b', 'c'])
+    expect(legend(figures[1] as Element)).toEqual(['a', 'b'])
+    expect(figures[1]?.querySelector('figcaption')?.textContent).toBe(
+      '5-hour limit left, next 5h · 100% of one subscription',
+    )
+    expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain(
+      'make 300% · 5-hour chart: only the 2 with a 5-hour limit ·',
+    )
+  })
+
   it('is left out when no subscription has a 5-hour limit', () => {
     const container = outlook([profile('a', false), profile('b', false)])
     expect(
@@ -124,6 +145,17 @@ describe('shorterNames', () => {
       // Both would be "delta": each keeps its short name.
       'delta',
       'delta-renewed-20261112',
+    ])
+  })
+
+  it('keeps the plain short names when a fallback would meet another name', () => {
+    // alpha and alpha-renewed both cut to "alpha", so fall back; alpha-renewed-renewed cuts to
+    // "alpha-renewed", which is then taken twice.
+    const names = ['p-alpha', 'p-alpha-renewed', 'p-alpha-renewed-renewed']
+    expect([...shorterNames(names).values()]).toEqual([
+      'alpha',
+      'alpha-renewed',
+      'alpha-renewed-renewed',
     ])
   })
 })

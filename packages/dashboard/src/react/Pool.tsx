@@ -76,12 +76,14 @@ export function shorterNames(names: string[]): Map<string, string> {
   )
   const taken = new Map<string, number>()
   for (const s of cut.values()) taken.set(s, (taken.get(s) ?? 0) + 1)
-  return new Map(
+  const out = new Map(
     names.map((n) => {
       const s = cut.get(n) ?? n
       return [n, (taken.get(s) ?? 0) > 1 ? (short.get(n) ?? n) : s] as const
     }),
   )
+  // A fallback that meets another's cut name: the plain short names, which are distinct.
+  return new Set(out.values()).size === out.size ? out : short
 }
 
 /** The names without what they all start with ("team-alpha", "team-bravo" → "alpha", "bravo"). */
@@ -835,11 +837,14 @@ export function CapacityOutlook(props: {
   const short = shortNames(names.length > 0 ? names : shown.subscriptionsShown)
   const shorter = shorterNames(names.length > 0 ? names : shown.subscriptionsShown)
   // The 5-hour chart counts only the subscriptions that have a 5-hour limit: one with none (a
-  // verified Ultra plan) has only its week, which the weekly chart shows.
+  // verified Ultra plan) has only its week, which the weekly chart shows. "None" is no 5-hour
+  // figure from the usage poll (every 15 minutes) or the headers, as for the ring.
   const fiveHourLimited = new Set(
     (props.profiles ?? []).filter((p) => !noFiveHourLimit(p)).map((p) => p.profile),
   )
   const limited = (name: string) => props.profiles === null || fiveHourLimited.has(name)
+  // Of the subscriptions drawn (those the forecast counts), how many the 5-hour chart has.
+  const fiveHourCounted = shown.fiveHourBy.filter((s) => limited(s.name)).length
   const colors = accountColors(names.length > 0 ? names : shown.subscriptionsShown)
   const reserves = new Map(
     (props.profiles ?? []).map((p) => [p.profile, p.reserveFraction ?? 0] as const),
@@ -922,8 +927,8 @@ export function CapacityOutlook(props: {
         {shown.capacity > 1
           ? `, so ${shown.capacity} subscriptions make ${asPercent(shown.capacity)}`
           : ''}
-        {fiveHourLimited.size < names.length && fiveHourLimited.size > 0
-          ? ` · 5-hour chart: only the ${fiveHourLimited.size} with a 5-hour limit`
+        {fiveHourCounted > 0 && fiveHourCounted < shown.fiveHourBy.length
+          ? ` · 5-hour chart: only the ${fiveHourCounted} with a 5-hour limit`
           : ''}{' '}
         · a 5-hour window can use no more than its week has left · shaded: none can take work, red
         until a week resets (or Anthropic's refusal ends), amber until a 5-hour window resets
