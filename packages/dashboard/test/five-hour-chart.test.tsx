@@ -115,6 +115,25 @@ describe('the 5-hour chart', () => {
     )
   })
 
+  it('is left out, with what the note says of it, when none it counts has room', () => {
+    // a has the only 5-hour limit, and its week is used up: 0% all along the next five hours.
+    const full = profile('a', true)
+    const container = outlook([
+      { ...full, weekly: { ...full.weekly, usedFraction: 1 } },
+      profile('b', false),
+    ])
+    expect(
+      [...container.querySelectorAll('figure')].map(
+        (f) => f.querySelector('figcaption')?.textContent,
+      ),
+    ).toEqual(['Weekly limit left · 50% of one subscription'])
+    const note = container.querySelector('.cmd-capacity-note')?.textContent ?? ''
+    expect(note).not.toMatch(/5-hour chart|a 5-hour window can use/)
+    expect(note).toBe(
+      "At the current pace · 100% is one subscription's whole limit, so 2 subscriptions make 200% · shaded: none can take work, red until a week resets (or Anthropic's refusal ends)",
+    )
+  })
+
   it('counts every subscription when all have a 5-hour limit, and says nothing of it', () => {
     const container = outlook([profile('a', true), profile('b', true)])
     const figures = [...container.querySelectorAll('figure')]

@@ -869,7 +869,10 @@ export function CapacityOutlook(props: {
       return at === null || when === null ? null : when(at, props.now)
     }
     const current = total.filter(([t]) => t <= props.now).at(-1)?.[1] ?? total[0]?.[1]
-    return total.length < 2 || capacity === 0 ? null : (
+    // A 5-hour chart with no room anywhere in the next five hours says nothing the weekly one
+    // does not: it is left out.
+    const empty = key === 'fiveHour' && total.every(([, v]) => v < 0.005)
+    return total.length < 2 || capacity === 0 || empty ? null : (
       <LineChart
         // In one subscription's limit, said outright: the pool's 66% would read as two thirds of all.
         title={`${title}${current === undefined ? '' : ` · ${asPercent(current)} of one subscription`}`}
@@ -898,6 +901,28 @@ export function CapacityOutlook(props: {
       />
     )
   }
+  const fiveChart = chart('fiveHour', '5-hour limit left, next 5h', 160)
+  // Only what the charts shown need.
+  const note = [
+    weeklyView === 'stopped' ? 'With no more use, as limits reset' : 'At the current pace',
+    `100% is one subscription's whole limit${
+      shown.capacity > 1
+        ? `, so ${shown.capacity} subscriptions make ${asPercent(shown.capacity)}`
+        : ''
+    }`,
+    ...(fiveChart === null
+      ? []
+      : [
+          ...(fiveHourCounted < shown.fiveHourBy.length
+            ? [`5-hour chart: only the ${fiveHourCounted} with a 5-hour limit`]
+            : []),
+          'a 5-hour window can use no more than its week has left',
+        ]),
+    `shaded: none can take work, red until a week resets (or Anthropic's refusal ends)${
+      shown.bands.some((b) => b.tone === 'secondary') ? ', amber until a 5-hour window resets' : ''
+    }`,
+    ...(anyReserve ? ['hatched: the part of a week its reserve holds back from the pool'] : []),
+  ].join(' · ')
   return (
     <div className="cmd-capacity">
       {stopped !== null && (
@@ -920,20 +945,8 @@ export function CapacityOutlook(props: {
         </fieldset>
       )}
       <div className="cmd-capacity-weekly">{chart('weekly', 'Weekly limit left', 180)}</div>
-      {chart('fiveHour', '5-hour limit left, next 5h', 160)}
-      <p className="cmd-capacity-note">
-        {weeklyView === 'stopped' ? 'With no more use, as limits reset' : 'At the current pace'} ·
-        100% is one subscription's whole limit
-        {shown.capacity > 1
-          ? `, so ${shown.capacity} subscriptions make ${asPercent(shown.capacity)}`
-          : ''}
-        {fiveHourCounted > 0 && fiveHourCounted < shown.fiveHourBy.length
-          ? ` · 5-hour chart: only the ${fiveHourCounted} with a 5-hour limit`
-          : ''}{' '}
-        · a 5-hour window can use no more than its week has left · shaded: none can take work, red
-        until a week resets (or Anthropic's refusal ends), amber until a 5-hour window resets
-        {anyReserve ? ' · hatched: the part of a week its reserve holds back from the pool' : ''}
-      </p>
+      {fiveChart}
+      <p className="cmd-capacity-note">{note}</p>
     </div>
   )
 }
