@@ -17,7 +17,7 @@ const NOW = Date.UTC(2026, 9, 11, 12)
 const H = HOUR_MS
 const WEEK = 168 * H
 
-/** A subscription with `used` of its week gone, resetting in `resetIn`, no 5-hour reading. */
+/** A subscription with `used` of its week gone, resetting in `resetIn`, and no 5-hour limit. */
 function sub(name: string, used: number, resetIn: number): ProfileStatus {
   return {
     profile: name,
