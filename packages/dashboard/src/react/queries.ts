@@ -40,7 +40,7 @@ export const SPLITS: ReadonlyArray<{
   tokens: boolean
   /** claude-master counts requests by this split too, the table's fallback; not by project. */
   requests: boolean
-  /** claw-master prices this split's tokens at Claude API rates (people and models). */
+  /** The table prices this split's tokens at Claude API rates (people and models; core/apiCost). */
   cost?: boolean
   /**
    * Tokens only once their counts cover the whole range; requests until then. For a split whose
@@ -150,18 +150,49 @@ export function kpiTokensQuery(now: EpochMs): SeriesQuery {
   return { metric: 'tokens', groupBy: 'type', range: kpiRange(now), stepSeconds: KPI_STEP_SECONDS }
 }
 
-/** The table's queries for one split: requests, and tokens by type when the split counts them. */
+/**
+ * The step API cost is worked out at: each step's cost is shared out to the people who worked in
+ * it, so a shorter step is closer (an hour's step was up to 15% off for a light user, ten minutes'
+ * within about 5%). The table's own step when shorter, so at 24 hours the queries are the table's.
+ */
+export const COST_STEP_SECONDS = 600
+
+/** What API cost is worked out from (core/apiCost): tokens by person and by model, requests by model. */
+export interface CostQueries {
+  people: SeriesQuery
+  models: SeriesQuery
+  requests: SeriesQuery
+}
+
+/** The table's queries for one split: requests, tokens by type when the split counts them, cost. */
 export function breakdownQueries(
   range: TimeRange,
   stepSeconds: number,
   split: (typeof SPLITS)[number],
-): { requests: SeriesQuery | null; tokens: SeriesQuery | null; cost: SeriesQuery | null } {
+): { requests: SeriesQuery | null; tokens: SeriesQuery | null; cost: CostQueries | null } {
   const base = { range, stepSeconds, groupBy: split.dimension }
+  const costStep = { range, stepSeconds: Math.min(stepSeconds, COST_STEP_SECONDS) }
   return {
     requests: split.requests ? { ...base, metric: 'requests' } : null,
     tokens: split.tokens ? { ...base, metric: 'tokens', byType: true } : null,
-    cost: split.cost === true ? { ...base, metric: 'apiCost' } : null,
+    cost:
+      split.cost === true
+        ? {
+            people: { ...costStep, metric: 'tokens', groupBy: 'client_account', byType: true },
+            models: { ...costStep, metric: 'tokens', groupBy: 'model', byType: true },
+            requests: { ...costStep, metric: 'requests', groupBy: 'model' },
+          }
+        : null,
   }
+}
+
+/** A table's queries as a list, in order. */
+function tableList(table: ReturnType<typeof breakdownQueries>): SeriesQuery[] {
+  return [
+    ...(table.requests === null ? [] : [table.requests]),
+    ...(table.tokens === null ? [] : [table.tokens]),
+    ...(table.cost === null ? [] : [table.cost.people, table.cost.models, table.cost.requests]),
+  ]
 }
 
 /** Tokens by subscription and type over a range: every token choice of the subscription chart. */
@@ -263,13 +294,7 @@ export function firstQueries(now: EpochMs): SeriesQuery[] {
     kpiTokensQuery(now),
     readingsQuery(now),
     readingsQuery(now, 'fiveHourUsed'),
-    ...(table === null
-      ? []
-      : [
-          ...(table.requests === null ? [] : [table.requests]),
-          ...(table.tokens === null ? [] : [table.tokens]),
-          ...(table.cost === null ? [] : [table.cost]),
-        ]),
+    ...(table === null ? [] : tableList(table)),
   ])
 }
 
@@ -289,14 +314,7 @@ export function tabQueries(now: EpochMs, shown: RangeName): SeriesQuery[] {
         tokensByProfileQuery(now, rangeName),
         chartQuery(now, rangeName, { metric: 'errors' }),
         chartQuery(now, rangeName, { metric: 'quotaBand', groupBy: 'profile' }),
-        ...SPLITS.flatMap((split) => {
-          const table = breakdownQueries(range, chart.stepSeconds, split)
-          return [
-            ...(table.requests === null ? [] : [table.requests]),
-            ...(table.tokens === null ? [] : [table.tokens]),
-            ...(table.cost === null ? [] : [table.cost]),
-          ]
-        }),
+        ...SPLITS.flatMap((split) => tableList(breakdownQueries(range, chart.stepSeconds, split))),
       ]
     }),
   )

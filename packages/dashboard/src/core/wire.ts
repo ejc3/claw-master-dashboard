@@ -30,7 +30,6 @@ const METRICS: readonly SemanticMetric[] = [
   'fableResetsInSeconds',
   'tokenExpiresInSeconds',
   'tokens',
-  'apiCost',
 ]
 
 export function seriesQueryToParams(query: SeriesQuery): URLSearchParams {

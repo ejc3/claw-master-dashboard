@@ -29,7 +29,8 @@ export const DEMO_VALUES: Record<Dimension, readonly string[]> = {
   client: ['box-1', 'box-2', 'tunnel', 'local'],
   client_account: ['alice', 'bob', 'carol', 'other', 'unknown'],
   project: ['web-app', 'api-server', 'infra', 'none'],
-  model: ['claude-model-large', 'claude-model-medium', 'claude-model-small'],
+  // Published model names, so the API cost column has prices for them.
+  model: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
   status_class: ['2xx', '4xx', '5xx', 'none'],
   status: ['429', '529', '500', '401', '0'],
   reason: [
@@ -289,18 +290,6 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
         const total =
           tokenType === undefined ? TOKEN_TYPES.reduce((sum, t) => sum + of(t), 0) : of(tokenType)
         return byKey(total)
-      }
-      case 'apiCost': {
-        // Every made-up request priced at Opus 5.5's rates: about 4.6 cents.
-        const dollars =
-          (requests *
-            (TOKENS_PER_REQUEST.input * 4 +
-              TOKENS_PER_REQUEST.output * 20 +
-              TOKENS_PER_REQUEST.cache_read * 0.2 +
-              TOKENS_PER_REQUEST.cache_creation * 5)) /
-          1e6
-        const sum = shares.reduce((a, b) => a + b, 0)
-        return shares.map((s) => (dollars * s) / sum)
       }
       case 'switches':
         return byKey(count(requests * 0.01, 'switches', m))

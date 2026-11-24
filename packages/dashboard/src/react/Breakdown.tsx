@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import {
+  apiCost,
   type EpochMs,
   formatCount,
   formatDollars,
@@ -49,33 +50,6 @@ export function tableRangeWords(
 ): string {
   if (coverage !== 'partial' || firstAt === null) return rangeWords
   return `since ${clock === null ? 'token counting began' : clock(firstAt)}`
-}
-
-/**
- * Each key's API cost over the range, from the cost query's series, and what to say about it: the
- * total, and from when it was counted when that is later than the token counts start (the
- * release that prices them came later). Null when there is nothing priced to show. claw-master
- * prices only the models on its price list, so a model it does not name has no cost here.
- */
-export function costSummary(
-  series: readonly Series[] | null,
-  costFirstAt: EpochMs | null,
-  tokensFirstAt: EpochMs | null,
-  range: TimeRange,
-  stepSeconds: number,
-): { byKey: Map<string, number>; total: number; from: EpochMs | null } | null {
-  if (series === null || costFirstAt === null) return null
-  const byKey = new Map<string, number>()
-  for (const s of series) {
-    const sum = s.points.reduce((acc, [, v]) => acc + v, 0)
-    if (sum > 0) byKey.set(s.key, (byKey.get(s.key) ?? 0) + sum)
-  }
-  if (byKey.size === 0) return null
-  const total = [...byKey.values()].reduce((a, b) => a + b, 0)
-  const step = stepSeconds * 1000
-  const tokensFrom = Math.max(tokensFirstAt ?? range.start, range.start)
-  const from = costFirstAt >= Math.floor(tokensFrom / step) * step + step ? costFirstAt : null
-  return { byKey, total, from }
 }
 
 /** One row per key with any requests in the range, most first. */
@@ -159,7 +133,9 @@ export function Breakdown(props: {
   const typesReady = tokens.loaded.state === 'ready'
   const typeFailure = tokens.loaded.state === 'error' ? tokens.loaded : undefined
   const firstAt = tokens.firstAt
-  const costs = useCountedSeries(props.apiBase, queries.cost)
+  const costPeople = useSeries(props.apiBase, queries.cost?.people ?? null)
+  const costModels = useSeries(props.apiBase, queries.cost?.models ?? null)
+  const costRequests = useSeries(props.apiBase, queries.cost?.requests ?? null)
   const coverage = typesReady ? tokenCoverage(firstAt, props.range, props.stepSeconds) : null
   const showTokens =
     split.tokens &&
@@ -197,14 +173,24 @@ export function Breakdown(props: {
       : null
   const tokensPending = split.tokens && !typesReady && tokenError === null
   const rows = showTokens ? tokenTable : tokensPending || tokenError !== null ? [] : requestRows
-  const costData = costs.loaded.state === 'ready' ? costs.loaded.data : null
-  const cost = useMemo(
+  const peopleData = costPeople.state === 'ready' ? costPeople.data : null
+  const modelData = costModels.state === 'ready' ? costModels.data : null
+  const requestByModel = costRequests.state === 'ready' ? costRequests.data : null
+  const priced = useMemo(
     () =>
-      showTokens
-        ? costSummary(costData, costs.firstAt, firstAt, props.range, props.stepSeconds)
-        : null,
-    [showTokens, costData, costs.firstAt, firstAt, props.range, props.stepSeconds],
+      peopleData === null || modelData === null || requestByModel === null
+        ? null
+        : apiCost(peopleData, modelData, requestByModel),
+    [peopleData, modelData, requestByModel],
   )
+  const cost =
+    priced === null || split.cost !== true
+      ? null
+      : {
+          byKey: split.dimension === 'model' ? priced.models : priced.people,
+          total: priced.total,
+          estimatedUntil: priced.estimatedUntil,
+        }
   const all = rows.reduce((sum, r) => sum + r.total, 0)
   // One scale for every row's trend (the tallest bar of any row), so a small series does not
   // look as busy as a large one and the busiest row's peak fills its height.
@@ -280,11 +266,11 @@ export function Breakdown(props: {
         {cost !== null && (
           <p className="cmd-note">
             {formatDollars(cost.total)} at Claude API prices
-            {cost.from === null
+            {cost.estimatedUntil === null
               ? ''
               : when === null
-                ? ', counted for part of this range'
-                : `, counted from ${when(cost.from, props.now)}`}
+                ? ', partly estimated from request counts'
+                : `, estimated from request counts before ${when(cost.estimatedUntil, props.now)}`}
             .
           </p>
         )}
