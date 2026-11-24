@@ -157,11 +157,16 @@ export function kpiTokensQuery(now: EpochMs): SeriesQuery {
  */
 export const COST_STEP_SECONDS = 600
 
-/** What API cost is worked out from (core/apiCost): tokens by person and by model, requests by model. */
+/**
+ * What API cost is worked out from (core/apiCost): tokens by person and by model, requests by
+ * model, and the tokens billed above the standard rate by person and by model.
+ */
 export interface CostQueries {
   people: SeriesQuery
   models: SeriesQuery
   requests: SeriesQuery
+  premiumPeople: SeriesQuery
+  premiumModels: SeriesQuery
 }
 
 /** The table's queries for one split: requests, tokens by type when the split counts them, cost. */
@@ -181,6 +186,13 @@ export function breakdownQueries(
             people: { ...costStep, metric: 'tokens', groupBy: 'client_account', byType: true },
             models: { ...costStep, metric: 'tokens', groupBy: 'model', byType: true },
             requests: { ...costStep, metric: 'requests', groupBy: 'model' },
+            premiumPeople: {
+              ...costStep,
+              metric: 'premiumTokens',
+              groupBy: 'client_account',
+              byType: true,
+            },
+            premiumModels: { ...costStep, metric: 'premiumTokens', groupBy: 'model', byType: true },
           }
         : null,
   }
@@ -191,7 +203,15 @@ function tableList(table: ReturnType<typeof breakdownQueries>): SeriesQuery[] {
   return [
     ...(table.requests === null ? [] : [table.requests]),
     ...(table.tokens === null ? [] : [table.tokens]),
-    ...(table.cost === null ? [] : [table.cost.people, table.cost.models, table.cost.requests]),
+    ...(table.cost === null
+      ? []
+      : [
+          table.cost.people,
+          table.cost.models,
+          table.cost.requests,
+          table.cost.premiumPeople,
+          table.cost.premiumModels,
+        ]),
   ]
 }
 

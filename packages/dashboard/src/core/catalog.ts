@@ -13,6 +13,11 @@ export interface ResolvedMetric {
   tokenType?: TokenType
   /** Split by token type as well as by groupBy (tokens only). */
   byType?: boolean
+  /**
+   * Split by rate as well (premium tokens, always): each series is keyed "<group> <type>@<rate>",
+   * so the rate rides with the type wherever a key is split at its last space.
+   */
+  byRate?: boolean
 }
 
 interface Entry {
@@ -22,6 +27,8 @@ interface Entry {
   dimensions: readonly Dimension[]
   /** A sibling metric that carries a dimension this one does not (one projection per axis). */
   projections?: Partial<Record<Dimension, string>>
+  /** Split by type and by `rate` too, always (premiumTokens). */
+  byRate?: true
 }
 
 // claude-master never crosses its axes: each metric carries at most three attributes, and a
@@ -129,6 +136,16 @@ const CATALOG: Record<SemanticMetric, Entry> = {
       model: 'claw_master.inference.tokens.by_model',
     },
   },
+  // The tokens the API bills above its standard rate, also counted in tokens: by rate, "1h"
+  // (hour-long cache writes), "fast" (a fast-mode request's) or "fast_1h" (both), so they can be
+  // priced (core/apiCost). Only by person and by model, and always by type and rate.
+  premiumTokens: {
+    name: 'claw_master.inference.premium_tokens.by_client_account',
+    statistic: 'SUM',
+    dimensions: ['client_account'],
+    projections: { model: 'claw_master.inference.premium_tokens.by_model' },
+    byRate: true,
+  },
 }
 
 const DIMENSIONS: readonly Dimension[] = [
@@ -164,12 +181,19 @@ export function resolveMetric(
   byType?: boolean,
 ): ResolvedMetric {
   const entry = CATALOG[metric]
-  if ((tokenType !== undefined || byType === true) && metric !== 'tokens') {
+  if (metric === 'premiumTokens' && (groupBy === undefined || byType !== true)) {
+    throw new UnsupportedQueryError(metric, groupBy ?? 'type')
+  }
+  if (tokenType !== undefined && metric !== 'tokens') {
+    throw new UnsupportedQueryError(metric, 'type')
+  }
+  if (byType === true && metric !== 'tokens' && metric !== 'premiumTokens') {
     throw new UnsupportedQueryError(metric, 'type')
   }
   const typed = {
     ...(tokenType === undefined ? {} : { tokenType }),
     ...(byType === true ? { byType } : {}),
+    ...(entry.byRate === true ? { byRate: true } : {}),
   }
   if (groupBy === undefined) return { name: entry.name, statistic: entry.statistic, ...typed }
   if (entry.dimensions.includes(groupBy)) {
@@ -192,7 +216,7 @@ export function groupableBy(metric: SemanticMetric): Dimension[] {
 
 // Metrics Insights keywords that must be quoted when used as a dimension name. `type` is quoted
 // too: quoting is harmless, and it keeps the token filter safe from the keyword list growing.
-const RESERVED = new Set<string>(['result', 'window', 'from', 'to', 'type'])
+const RESERVED = new Set<string>(['result', 'window', 'from', 'to', 'type', 'rate'])
 
 function identifier(name: string): string {
   return RESERVED.has(name) ? `"${name}"` : name
@@ -209,6 +233,7 @@ export function insightsQuery(namespace: string, resolved: ResolvedMetric): stri
   const groups = [
     ...(resolved.groupBy === undefined ? [] : [identifier(resolved.groupBy)]),
     ...(resolved.byType === true ? [identifier('type')] : []),
+    ...(resolved.byRate === true ? [identifier('rate')] : []),
   ]
   const group = groups.length === 0 ? '' : ` GROUP BY ${groups.join(', ')}`
   // The token type is one of four fixed words (checked where the query is parsed), so it is

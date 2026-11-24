@@ -143,6 +143,7 @@ export type SemanticMetric =
   | 'fableResetsInSeconds'
   | 'tokenExpiresInSeconds'
   | 'tokens'
+  | 'premiumTokens'
 
 export interface TimeRange {
   start: EpochMs

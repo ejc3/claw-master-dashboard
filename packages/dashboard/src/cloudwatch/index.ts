@@ -693,7 +693,11 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
       let results = await cached(expression, start, end, query.stepSeconds)
       // At the cap, some groups and types were left out: one query per type instead, labelled as
       // the grouped query labels them.
-      if (resolved.byType === true && results.length >= MAX_INSIGHTS_SERIES) {
+      if (
+        resolved.byType === true &&
+        resolved.byRate !== true &&
+        results.length >= MAX_INSIGHTS_SERIES
+      ) {
         const { byType: _, ...each } = resolved
         const types = await Promise.all(
           TOKEN_TYPES.map(async (tokenType) =>
@@ -709,9 +713,15 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         )
         results = types.flat()
       }
-      // Without GROUP BY, CloudWatch labels the one result with the query id.
+      // Without GROUP BY, CloudWatch labels the one result with the query id. Split by rate too,
+      // the label ends "<type> <rate>", keyed "<type>@<rate>" so the rate stays with the type.
+      const keyOf = (label: string) => {
+        if (resolved.byRate !== true) return label
+        const [rest, rate] = splitLabel(label)
+        return `${rest}@${rate}`
+      }
       const series = results.map((result) => ({
-        key: query.groupBy === undefined ? 'total' : result.label,
+        key: query.groupBy === undefined ? 'total' : keyOf(result.label),
         points: result.points,
       }))
       if (query.groupBy !== 'client_account') return series
