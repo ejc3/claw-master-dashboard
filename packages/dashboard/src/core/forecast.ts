@@ -496,6 +496,11 @@ interface JointSlot extends Slot {
    * when the subscription next takes work, and closes again at its reset.
    */
   five: SimWindow
+  /**
+   * No 5-hour limit at all (a verified Ultra plan: its week is read, no 5-hour figure ever is),
+   * so its 5-hour window is never used or full and never keeps it from work.
+   */
+  noFiveHourLimit: boolean
   /** Until when Anthropic is rate-limiting it (a 429), so it takes no work; null when not. */
   limitedUntil: EpochMs | null
 }
@@ -600,7 +605,11 @@ export function poolGaps(
     const loginExpired = p.tokenExpiresAt !== null && p.tokenExpiresAt <= from
     const limitedUntil =
       p.rateLimitedUntil !== null && p.rateLimitedUntil > from ? p.rateLimitedUntil : null
-    if (!loginExpired) slots.push({ quota: weekly, weekly, five, index, limitedUntil })
+    // As headline's noFiveHourLimit: the week is read (above), and no 5-hour figure at all.
+    const noFiveHourLimit = p.fiveHour === null
+    if (!loginExpired) {
+      slots.push({ quota: weekly, weekly, five, noFiveHourLimit, index, limitedUntil })
+    }
   }
   if (pace !== undefined) {
     weeklyDemand = pace.weekly
@@ -663,6 +672,8 @@ export function poolGaps(
       // What a 5-hour window can still take: nothing while Anthropic refuses the subscription or
       // its week is full, and never more than its week leaves, since work in the window spends the
       // week too (as fiveHourLeft, for the bars).
+      // A plan with no 5-hour limit counts its week left here, as what it can take in the next five
+      // hours (so the pool's 5-hour figure is zero only in a gap); the 5-hour chart leaves it out.
       const five = isFull(s.weekly) || refused ? 0 : Math.min(1 - s.five.used, 1 - s.weekly.used)
       fiveHour += five
       fiveHourBy.push(five)
@@ -745,12 +756,17 @@ export function poolGaps(
     for (const s of ready) {
       if (left <= 0) break
       const byWeek = perWeek > 0 ? (1 - s.weekly.used) / perWeek : Number.POSITIVE_INFINITY
-      const byFive = perFive > 0 ? (1 - s.five.used) / perFive : Number.POSITIVE_INFINITY
+      const byFive =
+        perFive > 0 && !s.noFiveHourLimit ? (1 - s.five.used) / perFive : Number.POSITIVE_INFINITY
       const take = Math.min(left, byWeek, byFive)
       if (take <= 0) continue
+      s.weekly.used = Math.min(1, s.weekly.used + take * perWeek)
+      if (s.noFiveHourLimit) {
+        left -= take
+        continue
+      }
       // A closed 5-hour window opens with the subscription's work.
       if (s.five.resetsAt === null && s.five.used === 0) s.five.resetsAt = t + s.five.lengthMs
-      s.weekly.used = Math.min(1, s.weekly.used + take * perWeek)
       s.five.used = Math.min(1, s.five.used + take * perFive)
       left -= take
     }

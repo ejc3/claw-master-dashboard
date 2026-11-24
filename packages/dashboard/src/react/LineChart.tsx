@@ -6,6 +6,7 @@ import {
   type PointerEvent,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -15,6 +16,8 @@ import { useWhen, useWidth } from './hooks'
 export interface ChartSeries {
   key: string
   label: string
+  /** A shorter name for a narrow chart (a phone), where the full ones would fill the legend. */
+  shortLabel?: string
   /** A CSS color, normally from seriesColors. */
   color: string
   points: Array<[EpochMs, number]>
@@ -146,10 +149,13 @@ export function valueTicks(max: number, integer: boolean): number[] {
   return !integer || Number.isInteger(mid) ? [0, mid, max] : [0, max]
 }
 
+/** Below this width (px) a chart names its series by their short names. */
+export const NARROW_WIDTH = 560
+
 /** Line chart with a crosshair readout (pointer, touch, or keyboard), legend and table view. */
 export const LineChart = memo(function LineChart({
   title,
-  series,
+  series: allSeries,
   format,
   integer = false,
   height = 200,
@@ -166,6 +172,13 @@ export const LineChart = memo(function LineChart({
   rankBy,
 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>()
+  // On a narrow chart each series goes by its short name, in the legend, readout and table alike.
+  const narrow = width > 0 && width < NARROW_WIDTH
+  const series = useMemo(
+    () =>
+      narrow ? allSeries.map((s) => (s.shortLabel ? { ...s, label: s.shortLabel } : s)) : allSeries,
+    [allSeries, narrow],
+  )
   // Series turned off from the legend; at least one always stays on.
   const [off, setOff] = useState<ReadonlySet<string>>(new Set())
   const weights = useWeights(

@@ -62,6 +62,30 @@ export function accountColors(names: string[]): Map<string, string> {
   return seriesColors(names)
 }
 
+/**
+ * Names short enough for a phone's chart legend: shortNames, then without a renewal's suffix
+ * ("alpha-2-renewed-20261121" → "alpha-2"), where that leaves each name its own.
+ */
+export function shorterNames(names: string[]): Map<string, string> {
+  const short = shortNames(names)
+  const cut = new Map(
+    names.map((n) => {
+      const s = short.get(n) ?? n
+      return [n, s.replace(/-renewed(?:-\d{8})?$/, '') || s] as const
+    }),
+  )
+  const taken = new Map<string, number>()
+  for (const s of cut.values()) taken.set(s, (taken.get(s) ?? 0) + 1)
+  const out = new Map(
+    names.map((n) => {
+      const s = cut.get(n) ?? n
+      return [n, (taken.get(s) ?? 0) > 1 ? (short.get(n) ?? n) : s] as const
+    }),
+  )
+  // A fallback that meets another's cut name: the plain short names, which are distinct.
+  return new Set(out.values()).size === out.size ? out : short
+}
+
 /** The names without what they all start with ("team-alpha", "team-bravo" → "alpha", "bravo"). */
 export function shortNames(names: string[]): Map<string, string> {
   let prefix = names[0] ?? ''
@@ -811,14 +835,32 @@ export function CapacityOutlook(props: {
   // each band one subscription's share. The title carries the total now: the point at or before now.
   const names = (props.profiles ?? []).map((p) => p.profile)
   const short = shortNames(names.length > 0 ? names : shown.subscriptionsShown)
+  const shorter = shorterNames(names.length > 0 ? names : shown.subscriptionsShown)
+  // The 5-hour chart counts only the subscriptions that have a 5-hour limit: one with none (a
+  // verified Ultra plan) has only its week, which the weekly chart shows. "None" is no 5-hour
+  // figure from the usage poll (every 15 minutes) or the headers, as for the ring.
+  const fiveHourLimited = new Set(
+    (props.profiles ?? []).filter((p) => !noFiveHourLimit(p)).map((p) => p.profile),
+  )
+  const limited = (name: string) => props.profiles === null || fiveHourLimited.has(name)
+  // Of the subscriptions drawn (those the forecast counts), how many the 5-hour chart has.
+  const fiveHourCounted = shown.fiveHourBy.filter((s) => limited(s.name)).length
   const colors = accountColors(names.length > 0 ? names : shown.subscriptionsShown)
   const reserves = new Map(
     (props.profiles ?? []).map((p) => [p.profile, p.reserveFraction ?? 0] as const),
   )
   const anyReserve = [...reserves.values()].some((r) => r > 0)
   const chart = (key: 'weekly' | 'fiveHour', title: string, height: number) => {
-    const total = shown[key]
-    const bySubscription = shown[key === 'weekly' ? 'weeklyBy' : 'fiveHourBy']
+    const bySubscription =
+      key === 'weekly' ? shown.weeklyBy : shown.fiveHourBy.filter((s) => limited(s.name))
+    const total =
+      key === 'weekly'
+        ? shown.weekly
+        : shown.fiveHour.map(([t], i): [EpochMs, number] => [
+            t,
+            bySubscription.reduce((sum, s) => sum + (s.points[i]?.[1] ?? 0), 0),
+          ])
+    const capacity = key === 'weekly' ? shown.capacity : bySubscription.length
     // On the weekly chart, the readout says when each subscription's week resets next after
     // the time read.
     const weekResets = new Map(bySubscription.map((s) => [s.name, s.weekResets]))
@@ -827,13 +869,14 @@ export function CapacityOutlook(props: {
       return at === null || when === null ? null : when(at, props.now)
     }
     const current = total.filter(([t]) => t <= props.now).at(-1)?.[1] ?? total[0]?.[1]
-    return total.length < 2 ? null : (
+    return total.length < 2 || capacity === 0 ? null : (
       <LineChart
         // In one subscription's limit, said outright: the pool's 66% would read as two thirds of all.
         title={`${title}${current === undefined ? '' : ` · ${asPercent(current)} of one subscription`}`}
         series={bySubscription.map((s) => ({
           key: s.name,
           label: short.get(s.name) ?? s.name,
+          shortLabel: shorter.get(s.name) ?? s.name,
           color: colors.get(s.name) ?? 'var(--cmd-ink-3)',
           points: s.points,
           // The last part of its week the owner's reserve holds back, hatched.
@@ -842,7 +885,7 @@ export function CapacityOutlook(props: {
             : {}),
         }))}
         format={asPercent}
-        max={ceiling(total, shown.capacity)}
+        max={ceiling(total, capacity)}
         bands={shown.bands}
         bandLabel="None available"
         table={false}
@@ -883,6 +926,9 @@ export function CapacityOutlook(props: {
         100% is one subscription's whole limit
         {shown.capacity > 1
           ? `, so ${shown.capacity} subscriptions make ${asPercent(shown.capacity)}`
+          : ''}
+        {fiveHourCounted > 0 && fiveHourCounted < shown.fiveHourBy.length
+          ? ` · 5-hour chart: only the ${fiveHourCounted} with a 5-hour limit`
           : ''}{' '}
         · a 5-hour window can use no more than its week has left · shaded: none can take work, red
         until a week resets (or Anthropic's refusal ends), amber until a 5-hour window resets

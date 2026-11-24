@@ -75,11 +75,11 @@ describe('poolGaps: both windows in one simulation', () => {
   })
 
   it('a pool much like a real one: 5-hour gaps soon, then a week of days', () => {
-    // One subscription with room in its week and little in its 5-hour window, one with room in
-    // its week and no 5-hour reading, two whose weeks are used up.
+    // One subscription with room in its week and a closed 5-hour window, one with room in its week
+    // and little in its 5-hour window, two whose weeks are used up.
     const g = poolGaps(
       [
-        sub('a', [0.27, 81 * H], null),
+        sub('a', [0.27, 81 * H], [0, -H]),
         sub('b', [0.47, 158 * H], [0.77, 3.75 * H]),
         sub('c', [1, 95 * H], null),
         sub('d', [1, 58 * H], null),
@@ -87,7 +87,7 @@ describe('poolGaps: both windows in one simulation', () => {
       NOW,
       rates({ a: 0.03, b: 0.06, c: 0.03, d: 0.03 }),
     )
-    // a's 5-hour window, unread, starts with its first work and fills, then b's.
+    // a's 5-hour window, closed, opens with its first work and fills, then b's.
     expect(hours(g).slice(0, 3)).toEqual([
       { start: 2, end: 3.75, endsWith: 'fiveHour' },
       { start: 7 + 2 / 60, end: 8 + 46 / 60, endsWith: 'fiveHour' },
@@ -147,6 +147,21 @@ describe('poolGaps: both windows in one simulation', () => {
       rates({ a: 0, b: 0.1 }),
     )
     expect(hours(g)[0]).toEqual({ start: 1, end: 50, endsWith: 'weekly' })
+  })
+
+  it('never stops a plan with no 5-hour limit on a 5-hour window', () => {
+    // a has no 5-hour limit (no 5-hour figure at all); b's week is full, but its 5-hour window,
+    // half used an hour in, sets the pool's 5-hour pace. a takes all the work until its week is
+    // full, with no 5-hour gap on the way, and the pool is out until a week resets.
+    const g = poolGaps(
+      [sub('a', [0.5, 100 * H], null), sub('b', [1, 100 * H], [0.5, 4 * H])],
+      NOW,
+      rates({ a: 0.05, b: 0.05 }),
+    )
+    // (After the resets, b's own 5-hour limit stops it: those gaps are real.)
+    expect(hours(g).filter((gap) => gap.start < 100)).toEqual([
+      { start: 5, end: 100, endsWith: 'weekly' },
+    ])
   })
 
   it('ends a gap at the reset that lets work flow, not the first reset', () => {

@@ -55,7 +55,8 @@ export function createResetScenarioSource(options: DemoOptions = {}): MetricsSou
           // Refused until its week resets.
           rateLimitedUntil: weekEnds,
           weekly: { usedFraction: 1, resetsAt: weekEnds, lengthMs: WEEK_MS },
-          fiveHour: null,
+          // A 5-hour limit with no window open: null would read as a plan with none.
+          fiveHour: { usedFraction: 0, resetsAt: null, lengthMs: FIVE_HOURS_MS },
         }
       })
       return { ...base, asOf: now, profiles }

@@ -972,7 +972,8 @@ describe('subscriptions in order of what they have left', () => {
     profile: name,
     band: 'ok',
     weekly: { usedFraction: used, resetsAt: NOW + resetIn, lengthMs: 168 * HOUR_MS },
-    fiveHour: null,
+    // A 5-hour window that closed an hour ago: each window counts as far as its week leaves.
+    fiveHour: { usedFraction: 0, resetsAt: NOW - HOUR_MS, lengthMs: 5 * HOUR_MS },
     rateLimitedUntil: null,
     tokenExpiresAt: null,
     latencyMs: { p50: null, p95: null, p99: null },
@@ -1406,7 +1407,8 @@ describe('the banner', () => {
     profile,
     band: 'ok',
     weekly: { usedFraction: weekly, resetsAt: NOW + resetIn, lengthMs: 168 * HOUR_MS },
-    fiveHour: null,
+    // Closed an hour ago, so the 5-hour chart shows: a plan with no 5-hour limit is left off it.
+    fiveHour: { usedFraction: 0, resetsAt: NOW - HOUR_MS, lengthMs: 5 * HOUR_MS },
     rateLimitedUntil: null,
     tokenExpiresAt: null,
     latencyMs: { p50: null, p95: null, p99: null },
@@ -1490,8 +1492,8 @@ describe('the banner', () => {
     act(() => {
       five.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     })
-    // No 5-hour readings: every window closed, so each counts as far as its week leaves, by
-    // subscription like the weekly chart.
+    // Every window closed, so each counts as far as its week leaves, by subscription like the
+    // weekly chart.
     expect(five.getAttribute('aria-valuetext')).toMatch(/: a 70%, b 20%, total 90%$/)
   })
 
