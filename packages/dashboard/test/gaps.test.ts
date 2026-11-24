@@ -164,6 +164,37 @@ describe('poolGaps: both windows in one simulation', () => {
     ])
   })
 
+  it("takes the poll's word on whether a plan has a 5-hour limit over a missing figure", () => {
+    // As in the case above, but a's poll says it has a 5-hour limit (its figure is just missing):
+    // its window opens with its work and fills, so 5-hour gaps come before its week is full.
+    const said = (limit: boolean) =>
+      poolGaps(
+        [
+          sub('a', [0.5, 100 * H], null, { fiveHourLimit: limit }),
+          sub('b', [1, 100 * H], [0.5, 4 * H]),
+        ],
+        NOW,
+        rates({ a: 0.05, b: 0.05 }),
+      )
+    expect(hours(said(true))[0]?.endsWith).toBe('fiveHour')
+    expect(hours(said(false)).filter((gap) => gap.start < 100)).toEqual([
+      { start: 5, end: 100, endsWith: 'weekly' },
+    ])
+    // And a plan the poll says has none is never stopped by a 5-hour window, figure or not: here
+    // one full for four more hours.
+    const none = poolGaps(
+      [
+        sub('a', [0.5, 100 * H], [1, 4 * H], { fiveHourLimit: false }),
+        sub('b', [1, 100 * H], [0.5, 4 * H]),
+      ],
+      NOW,
+      rates({ a: 0.05, b: 0.05 }),
+    )
+    expect(hours(none).filter((gap) => gap.start < 100)).toEqual([
+      { start: 5, end: 100, endsWith: 'weekly' },
+    ])
+  })
+
   it('ends a gap at the reset that lets work flow, not the first reset', () => {
     // The week resets in an hour, but the 5-hour window is full for four.
     const one = poolGaps([sub('a', [1, H], [1, 4 * H])], NOW)

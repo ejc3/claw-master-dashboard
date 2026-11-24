@@ -43,6 +43,12 @@ export interface ProfileStatus {
   weekly: QuotaWindow
   /** Null when the source does not report the 5-hour window. */
   fiveHour: QuotaWindow | null
+  /**
+   * Whether the plan has a 5-hour limit, from the usage poll's latest answer that said
+   * (claw_master.quota.five_hour.limited, looked for over a week); null when none said; absent
+   * when the source cannot tell.
+   */
+  fiveHourLimit?: boolean | null
   /** When claude-master tries the subscription again after Anthropic rate-limited it (a 429); null when it is not rate-limited. */
   rateLimitedUntil: EpochMs | null
   /** When the profile's login token expires; null when unknown. */

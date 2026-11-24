@@ -2,7 +2,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { HOUR_MS, type ProfileStatus, poolGaps } from '../src/core/index'
+import { HOUR_MS, noFiveHourLimit, type ProfileStatus, poolGaps } from '../src/core/index'
 import { LineChart } from '../src/react/LineChart'
 import { CapacityOutlook, shorterNames } from '../src/react/Pool'
 
@@ -124,6 +124,30 @@ describe('the 5-hour chart', () => {
     expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain(
       'make 200% · a 5-hour window',
     )
+  })
+})
+
+describe('noFiveHourLimit', () => {
+  it("takes the poll's word, and without it reads a week with no 5-hour figure as none", () => {
+    const withFigure = profile('a', true)
+    const without = profile('b', false)
+    expect(noFiveHourLimit(without)).toBe(true)
+    expect(noFiveHourLimit({ ...without, fiveHourLimit: null })).toBe(true)
+    // The poll says it has one: its figure is only missing.
+    expect(noFiveHourLimit({ ...without, fiveHourLimit: true })).toBe(false)
+    expect(noFiveHourLimit(withFigure)).toBe(false)
+    expect(noFiveHourLimit({ ...withFigure, fiveHourLimit: false })).toBe(true)
+  })
+
+  it('keeps a plan the poll says has a 5-hour limit on the 5-hour chart, figure or not', () => {
+    reportedWidth = 900
+    const container = outlook([
+      profile('a', true),
+      { ...profile('b', false), fiveHourLimit: true },
+      profile('c', false),
+    ])
+    const figures = [...container.querySelectorAll('figure')]
+    expect(legend(figures[1] as Element)).toEqual(['a', 'b'])
   })
 })
 

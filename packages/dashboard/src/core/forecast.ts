@@ -422,6 +422,20 @@ export function poolForecast(
   return lasting(demand <= 0 ? 'idle' : 'horizon')
 }
 
+/**
+ * Whether a subscription has no 5-hour limit. Since 2026-10-30 Anthropic drops the 5-hour limit for
+ * verified Ultra accounts (Max 20x renamed); Max keeps it, and a new Ultra account keeps it until
+ * verified. The usage poll says which (`fiveHourLimit`); before a claw-master release reports it,
+ * or with no answer in a week, a subscription whose week is read but with no 5-hour figure at all,
+ * from the poll or the response headers, has none.
+ */
+export function noFiveHourLimit(profile: ProfileStatus): boolean {
+  if (profile.fiveHourLimit === true || profile.fiveHourLimit === false) {
+    return !profile.fiveHourLimit
+  }
+  return profile.fiveHour === null && profile.weekly.usedFraction !== null
+}
+
 /** A time when no subscription can take work. */
 export interface PoolGap {
   start: EpochMs
@@ -591,7 +605,9 @@ export function poolGaps(
     counted++
     const weekly = simWindow(w)
     catchUp(weekly, from)
-    const f = reading(p, 'fiveHour')
+    // A plan with no 5-hour limit has no 5-hour window, whatever figure came with it (the response
+    // headers can carry one for hours after Anthropic drops the limit).
+    const f = noFiveHourLimit(p) ? null : reading(p, 'fiveHour')
     const five: SimWindow =
       f === null ? { used: 0, resetsAt: null, lengthMs: FIVE_HOURS_MS, known: false } : simWindow(f)
     closeIfOver(five, from)
@@ -605,10 +621,15 @@ export function poolGaps(
     const loginExpired = p.tokenExpiresAt !== null && p.tokenExpiresAt <= from
     const limitedUntil =
       p.rateLimitedUntil !== null && p.rateLimitedUntil > from ? p.rateLimitedUntil : null
-    // As headline's noFiveHourLimit: the week is read (above), and no 5-hour figure at all.
-    const noFiveHourLimit = p.fiveHour === null
     if (!loginExpired) {
-      slots.push({ quota: weekly, weekly, five, noFiveHourLimit, index, limitedUntil })
+      slots.push({
+        quota: weekly,
+        weekly,
+        five,
+        noFiveHourLimit: noFiveHourLimit(p),
+        index,
+        limitedUntil,
+      })
     }
   }
   if (pace !== undefined) {
