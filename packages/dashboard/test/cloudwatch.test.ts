@@ -368,8 +368,8 @@ describe('createCloudWatchSource', () => {
       'SELECT MAX("claw_master.quota.five_hour.limited") FROM "ClawMaster" GROUP BY profile',
     )
     for (const { body, expression } of requests) {
-      // Whether a plan has a 5-hour limit is also looked for over a week, hour by hour, ending on
-      // the hour so the answer is reused within it.
+      // Whether a plan has a 5-hour limit is looked for over a week, hour by hour, ending on the
+      // hour so the buckets are whole; and minute by minute since the top of the previous hour.
       if (periodOf(body) === 3600) {
         expect(expression).toContain('five_hour.limited')
         const hourEnd = Math.ceil((NOW + 60_000) / 3_600_000) * 3_600_000
@@ -380,6 +380,11 @@ describe('createCloudWatchSource', () => {
         continue
       }
       expect(body.EndTime).toBe(SEC(NOW + 60_000))
+      if (expression.includes('five_hour.limited')) {
+        const hourStart = Math.floor((NOW + 60_000) / 3_600_000) * 3_600_000
+        expect(body.StartTime).toBe(SEC(hourStart - 3_600_000))
+        continue
+      }
       // The 5-hour reading is looked for over its whole window; the rest over minutes.
       expect(body.StartTime).toBe(
         SEC(

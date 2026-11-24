@@ -573,9 +573,13 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         read(gauge('MAX', 'quota.weekly.resets_left', ['profile'])),
         read(gauge('MAX', 'quota.fable.resets_left', ['profile'])),
         // Whether each plan has a 5-hour limit (claw-master releases that have it): the latest
-        // minute, else the latest hour in a week. The week's query ends on the hour, so its answer
-        // is reused for that hour.
-        read(gauge('MAX', 'quota.five_hour.limited', ['profile'])),
+        // minute since the top of the previous hour, else the latest hour in a week. The minutes
+        // reach back past the hour, so a change within it is not undone by the hour's MAX when the
+        // poll then stops for a while. The week's query ends on the hour, so its buckets are whole.
+        read(
+          gauge('MAX', 'quota.five_hour.limited', ['profile']),
+          Math.min(start, Math.floor(end / 3_600_000) * 3_600_000 - 3_600_000),
+        ),
         turn(() =>
           cached(
             gauge('MAX', 'quota.five_hour.limited', ['profile']),
