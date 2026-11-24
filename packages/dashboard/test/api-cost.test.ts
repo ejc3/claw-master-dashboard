@@ -28,6 +28,7 @@ describe('API cost', () => {
     expect(formatDollars(0.42)).toBe('$0.42')
     expect(formatDollars(38.2)).toBe('$38.20')
     expect(formatDollars(1240.4)).toBe('$1,240')
+    expect(formatDollars(99.996)).toBe('$100')
   })
 
   it('sums each key over the range and says from when, if counted after the tokens began', () => {

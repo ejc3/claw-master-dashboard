@@ -54,7 +54,8 @@ export function tableRangeWords(
 /**
  * Each key's API cost over the range, from the cost query's series, and what to say about it: the
  * total, and from when it was counted when that is later than the token counts start (the
- * release that prices them came later). Null when there is nothing priced to show.
+ * release that prices them came later). Null when there is nothing priced to show. claw-master
+ * prices only the models on its price list, so a model it does not name has no cost here.
  */
 export function costSummary(
   series: readonly Series[] | null,
@@ -279,9 +280,11 @@ export function Breakdown(props: {
         {cost !== null && (
           <p className="cmd-note">
             {formatDollars(cost.total)} at Claude API prices
-            {cost.from === null || when === null
+            {cost.from === null
               ? ''
-              : `, counted from ${when(cost.from, props.now)}`}
+              : when === null
+                ? ', counted for part of this range'
+                : `, counted from ${when(cost.from, props.now)}`}
             .
           </p>
         )}

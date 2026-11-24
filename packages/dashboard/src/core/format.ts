@@ -49,7 +49,7 @@ export function formatDollars(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return '—'
   if (value === 0) return '$0'
   if (Math.abs(value) < 0.005) return '<$0.01'
-  const digits = Math.abs(value) >= 100 ? 0 : 2
+  const digits = Math.round(Math.abs(value) * 100) / 100 >= 100 ? 0 : 2
   return new Intl.NumberFormat('en', {
     style: 'currency',
     currency: 'USD',
