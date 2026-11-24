@@ -605,7 +605,9 @@ export function poolGaps(
     counted++
     const weekly = simWindow(w)
     catchUp(weekly, from)
-    const f = reading(p, 'fiveHour')
+    // A plan with no 5-hour limit has no 5-hour window, whatever figure came with it (the response
+    // headers can carry one for hours after Anthropic drops the limit).
+    const f = noFiveHourLimit(p) ? null : reading(p, 'fiveHour')
     const five: SimWindow =
       f === null ? { used: 0, resetsAt: null, lengthMs: FIVE_HOURS_MS, known: false } : simWindow(f)
     closeIfOver(five, from)

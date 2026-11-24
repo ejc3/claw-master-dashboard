@@ -180,10 +180,11 @@ describe('poolGaps: both windows in one simulation', () => {
     expect(hours(said(false)).filter((gap) => gap.start < 100)).toEqual([
       { start: 5, end: 100, endsWith: 'weekly' },
     ])
-    // And a plan the poll says has none is never stopped by a 5-hour window, figure or not.
+    // And a plan the poll says has none is never stopped by a 5-hour window, figure or not: here
+    // one full for four more hours.
     const none = poolGaps(
       [
-        sub('a', [0.5, 100 * H], [0.9, 4 * H], { fiveHourLimit: false }),
+        sub('a', [0.5, 100 * H], [1, 4 * H], { fiveHourLimit: false }),
         sub('b', [1, 100 * H], [0.5, 4 * H]),
       ],
       NOW,

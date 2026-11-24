@@ -42,6 +42,10 @@ function result(label: string, points: Array<[number, number]>) {
 
 type Answer = (body: Record<string, unknown>, expression: string) => unknown
 
+/** The period of a request's query, in seconds. */
+const periodOf = (body: Record<string, unknown>) =>
+  (body.MetricDataQueries as Array<{ Period?: number }> | undefined)?.[0]?.Period
+
 /** A fake CloudWatch: records every signed request and answers from `answer`. */
 function fakeCloudWatch(answer: Answer) {
   const requests: Array<{ request: Request; body: Record<string, unknown>; expression: string }> =
@@ -95,10 +99,10 @@ function snapshotAnswers(): Answer {
   const latest = t0 + 9 * 60_000
   return (_body, expression) => {
     const results = (() => {
-      // Whether each plan has a 5-hour limit: bravo's poll said none, three days ago; alpha's
-      // proxy does not report it.
+      // Whether each plan has a 5-hour limit: bravo's poll said so three days ago; alpha's proxy
+      // does not report it.
       if (expression.includes('quota.five_hour.limited'))
-        return [result('bravo', [[NOW - 72 * 3_600_000, 0]])]
+        return periodOf(_body) === 3600 ? [result('bravo', [[NOW - 72 * 3_600_000, 1]])] : []
       // The usage poll's 5-hour gauges (none here: the header readings stand).
       if (expression.includes('quota.five_hour.')) return []
       // The Fable gauges (none here: no subscription reports a Fable allowance).
@@ -336,7 +340,7 @@ describe('createCloudWatchSource', () => {
     const { src, requests } = source(snapshotAnswers())
     const snapshot = await src.snapshot()
     const latest = t0 + 9 * 60_000
-    expect(requests).toHaveLength(20)
+    expect(requests).toHaveLength(21)
     const expressions = requests.map((r) => r.expression)
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
@@ -364,18 +368,26 @@ describe('createCloudWatchSource', () => {
       'SELECT MAX("claw_master.quota.five_hour.limited") FROM "ClawMaster" GROUP BY profile',
     )
     for (const { body, expression } of requests) {
+      // Whether a plan has a 5-hour limit is also looked for over a week, hour by hour, ending on
+      // the hour so the answer is reused within it.
+      if (periodOf(body) === 3600) {
+        expect(expression).toContain('five_hour.limited')
+        const hourEnd = Math.ceil((NOW + 60_000) / 3_600_000) * 3_600_000
+        expect([body.StartTime, body.EndTime]).toEqual([
+          SEC(hourEnd - FIVE_HOUR_LIMIT_LOOKBACK_MS),
+          SEC(hourEnd),
+        ])
+        continue
+      }
       expect(body.EndTime).toBe(SEC(NOW + 60_000))
-      // The 5-hour reading is looked for over its whole window, whether a plan has a 5-hour limit
-      // over a week (hour by hour), the rest over minutes.
+      // The 5-hour reading is looked for over its whole window; the rest over minutes.
       expect(body.StartTime).toBe(
         SEC(
           NOW +
             60_000 -
             (expression.includes('anthropic.ratelimit")')
               ? FIVE_HOUR_LOOKBACK_MS
-              : expression.includes('five_hour.limited')
-                ? FIVE_HOUR_LIMIT_LOOKBACK_MS
-                : SNAPSHOT_LOOKBACK_MS),
+              : SNAPSHOT_LOOKBACK_MS),
         ),
       )
     }
@@ -408,13 +420,36 @@ describe('createCloudWatchSource', () => {
     expect(bravo.weekly.resetsAt).toBeNull()
     expect(bravo.fiveHour).toBeNull()
     // The poll's word on 5-hour limits holds for days; none from alpha's proxy.
-    expect(bravo.fiveHourLimit).toBe(false)
+    expect(bravo.fiveHourLimit).toBe(true)
     expect(alpha.fiveHourLimit).toBeNull()
     expect(bravo.rateLimitedUntil).toBe(latest + 420_000)
     expect(bravo.latencyMs).toEqual({ p50: null, p95: null, p99: null })
     // The last minute Anthropic took its work (a refusal is not that); none for bravo.
     expect(alpha.acceptedAt).toBe(t0 + 2 * 60_000)
     expect(bravo.acceptedAt).toBeNull()
+  })
+
+  it("takes the poll's latest word on a 5-hour limit, and shows no figure for a plan without one", async () => {
+    const latest = t0 + 9 * 60_000
+    const answers = snapshotAnswers()
+    const { src } = source((body, expression) => {
+      if (!expression.includes('quota.five_hour.limited')) return answers(body, expression)
+      // An hour ago both had one; in the last minutes alpha's poll says it has none.
+      if (periodOf(body) === 3600)
+        return {
+          MetricDataResults: [
+            result('alpha', [[NOW - 3_600_000, 1]]),
+            result('bravo', [[NOW - 3_600_000, 1]]),
+          ],
+        }
+      return { MetricDataResults: [result('alpha', [[latest, 0]])] }
+    })
+    const snapshot = await src.snapshot()
+    const [alpha, bravo] = snapshot.profiles
+    expect(alpha?.fiveHourLimit).toBe(false)
+    // alpha's headers still carry a 5-hour figure (32%): a plan with no 5-hour limit shows none.
+    expect(alpha?.fiveHour).toBeNull()
+    expect(bravo?.fiveHourLimit).toBe(true)
   })
 
   it('keeps a 5-hour reading from hours ago while its window runs, and none once it has reset', async () => {
