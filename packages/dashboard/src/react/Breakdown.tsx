@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   apiCost,
   type EpochMs,
@@ -9,6 +9,7 @@ import {
   formatPercent,
   fromFirstBucket,
   type Series,
+  type SeriesQuery,
   type TimeRange,
   TOKEN_LABELS,
   TOKEN_TYPES,
@@ -19,10 +20,10 @@ import {
   tokenRows,
   tokensByType,
 } from '../core/index'
-import { useCountedSeries, useHeldHeight, useSeries, useWhen } from './hooks'
+import { type Loaded, useCountedSeries, useHeldHeight, useSeries, useWhen } from './hooks'
 import { type ChartSeries, foldSeries, LineChart, seriesColors } from './LineChart'
 import { shortNames } from './Pool'
-import { breakdownQueries, SPLITS } from './queries'
+import { breakdownQueries, queryShape, SPLITS } from './queries'
 import { Sparkline, sharedPeak } from './Sparkline'
 
 function ShareCell(props: { share: number }) {
@@ -50,6 +51,18 @@ export function tableRangeWords(
 ): string {
   if (coverage !== 'partial' || firstAt === null) return rangeWords
   return `since ${clock === null ? 'token counting began' : clock(firstAt)}`
+}
+
+/**
+ * A query's last answer, kept while the next one loads as long as only its range's end moved: not
+ * another range's answer under this one's name.
+ */
+function useKept(loaded: Loaded<Series[]>, query: SeriesQuery | null): Series[] | null {
+  const kept = useRef<{ shape: string; data: Series[] } | null>(null)
+  if (query === null) return null
+  const shape = queryShape(query)
+  if (loaded.state === 'ready') kept.current = { shape, data: loaded.data }
+  return kept.current?.shape === shape ? kept.current.data : null
 }
 
 /** One row per key with any requests in the range, most first. */
@@ -173,9 +186,11 @@ export function Breakdown(props: {
       : null
   const tokensPending = split.tokens && !typesReady && tokenError === null
   const rows = showTokens ? tokenTable : tokensPending || tokenError !== null ? [] : requestRows
-  const peopleData = costPeople.state === 'ready' ? costPeople.data : null
-  const modelData = costModels.state === 'ready' ? costModels.data : null
-  const requestByModel = costRequests.state === 'ready' ? costRequests.data : null
+  // Each kept while its next answer loads: at seven days the range moves an hour at a time, more
+  // than the cost queries' own step, so they reload each hour rather than keep their answer.
+  const peopleData = useKept(costPeople, queries.cost?.people ?? null)
+  const modelData = useKept(costModels, queries.cost?.models ?? null)
+  const requestByModel = useKept(costRequests, queries.cost?.requests ?? null)
   const priced = useMemo(
     () =>
       peopleData === null || modelData === null || requestByModel === null
@@ -331,9 +346,16 @@ export function Breakdown(props: {
                       )}
                     </>
                   ) : (
-                    <th scope="col" className="cmd-num">
-                      Requests
-                    </th>
+                    <>
+                      <th scope="col" className="cmd-num">
+                        Requests
+                      </th>
+                      {cost !== null && (
+                        <th scope="col" className="cmd-num cmd-full">
+                          API cost
+                        </th>
+                      )}
+                    </>
                   )}
                   <th scope="col">Share</th>
                   <th scope="col" className="cmd-full">
@@ -375,6 +397,11 @@ export function Breakdown(props: {
                           color={color(r.key)}
                         />
                         <td className="cmd-num">{formatCount(r.total)}</td>
+                        {cost !== null && (
+                          <td className="cmd-num cmd-full">
+                            {formatDollars(cost.byKey.get(r.key) ?? null)}
+                          </td>
+                        )}
                         <ShareCell share={all === 0 ? 0 : r.total / all} />
                         <td className="cmd-trend cmd-full">
                           <Sparkline points={r.points} maxBar={peak} />
