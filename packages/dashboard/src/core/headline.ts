@@ -1,3 +1,4 @@
+import { noFiveHourLimit } from './forecast'
 import { projectedExhaustion } from './pace'
 import {
   type EpochMs,
@@ -125,15 +126,6 @@ export function fiveHourLeft(profile: ProfileStatus, now: EpochMs): number | nul
   const fiveUsed = clamp(fiveHourAt(profile.fiveHour, now)?.usedFraction)
   if (fiveUsed === null) return weekLeft === 0 ? 0 : null
   return Math.min(1 - fiveUsed, weekLeft ?? 1)
-}
-
-/**
- * Whether a subscription has no 5-hour limit: its week is read but no 5-hour figure at all, from the
- * poll or the response headers. Since 2026-10-30 Anthropic drops the 5-hour limit for verified Ultra
- * accounts (Max 20x renamed); Max keeps it, and a new Ultra account keeps it until verified.
- */
-export function noFiveHourLimit(profile: ProfileStatus): boolean {
-  return profile.fiveHour === null && profile.weekly.usedFraction !== null
 }
 
 /** What a usage poll's 100% leaves, at most: it reads whole percents. */
@@ -287,3 +279,5 @@ export function fableSummary(
       allowance.length === 0 ? null : allowance.reduce((sum, l) => sum + l, 0) / allowance.length,
   }
 }
+
+export { noFiveHourLimit }

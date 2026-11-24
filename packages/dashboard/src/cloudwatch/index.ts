@@ -166,6 +166,17 @@ export const SNAPSHOT_LOOKBACK_MS = 15 * 60_000
 export const FIVE_HOUR_LOOKBACK_MS = FIVE_HOURS_MS
 
 /**
+ * How far back the usage poll's word on whether a plan has a 5-hour limit is looked for, hour by
+ * hour: it holds until a later poll says otherwise, through restarts and failed polls.
+ */
+export const FIVE_HOUR_LIMIT_LOOKBACK_MS = 7 * 24 * 3_600_000
+
+/** Whether a plan has a 5-hour limit, from the latest hour of the poll's gauge; null with none. */
+export function fiveHourLimitFrom(reading: [EpochMs, number] | null): boolean | null {
+  return reading === null ? null : reading[1] >= 0.5
+}
+
+/**
  * The weekly Fable allowance from its three gauges, each the latest [time, value]; null when the
  * subscription reports neither a Fable figure nor a refusal. A countdown is turned into a time from
  * when it was read; one of zero or less means no reset is known, or no refusal is in force. A
@@ -516,6 +527,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         reserveShares,
         weeklyBanked,
         fableBanked,
+        fiveHourLimited,
       ] = await Promise.all([
         read(gauge('MAX', 'quota.used_fraction', ['profile'])),
         read(gauge('MAX', 'quota.resets_in_seconds', ['profile'])),
@@ -558,6 +570,16 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
         // The resets each account has banked (claw-master releases that have them).
         read(gauge('MAX', 'quota.weekly.resets_left', ['profile'])),
         read(gauge('MAX', 'quota.fable.resets_left', ['profile'])),
+        // Whether each plan has a 5-hour limit (claw-master releases that have it), the latest
+        // answer in a week, hour by hour.
+        turn(() =>
+          cached(
+            gauge('MAX', 'quota.five_hour.limited', ['profile']),
+            end - FIVE_HOUR_LIMIT_LOOKBACK_MS,
+            end,
+            3600,
+          ),
+        ),
       ])
       const byLabel = (results: InsightsResult[]) => new Map(results.map((r) => [r.label, r]))
       const resetsBy = byLabel(resets)
@@ -572,6 +594,7 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
       const reserveBy = byLabel(reserveShares)
       const weeklyBankedBy = byLabel(weeklyBanked)
       const fableBankedBy = byLabel(fableBanked)
+      const fiveHourLimitedBy = byLabel(fiveHourLimited)
       // Two-dimension groups: "<profile> <quantile>" and "<profile> <measure>".
       const quantilesBy = new Map<string, Partial<Record<string, number>>>()
       for (const result of quantiles) {
@@ -655,6 +678,8 @@ export function createCloudWatchSource(options: CloudWatchSourceOptions): Metric
               lengthMs: WEEK_MS,
             },
             fiveHour: fiveHourWindow(utilization, resets5h),
+            // Not through at(): an hour-old answer says nothing of how new the snapshot is.
+            fiveHourLimit: fiveHourLimitFrom(latest(fiveHourLimitedBy.get(profile))),
             rateLimitedUntil:
               cooldown === null || cooldown[1] <= 0 ? null : cooldown[0] + cooldown[1] * 1000,
             tokenExpiresAt: token === null ? null : token[0] + token[1] * 1000,

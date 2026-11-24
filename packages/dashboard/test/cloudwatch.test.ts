@@ -7,6 +7,7 @@ import {
   createCloudWatchSource,
   DEFAULT_CACHE_MS,
   DEFAULT_THROTTLE_RETRIES_MS,
+  FIVE_HOUR_LIMIT_LOOKBACK_MS,
   FIVE_HOUR_LOOKBACK_MS,
   fableAllowance,
   fiveHourWindow,
@@ -94,6 +95,10 @@ function snapshotAnswers(): Answer {
   const latest = t0 + 9 * 60_000
   return (_body, expression) => {
     const results = (() => {
+      // Whether each plan has a 5-hour limit: bravo's poll said none, three days ago; alpha's
+      // proxy does not report it.
+      if (expression.includes('quota.five_hour.limited'))
+        return [result('bravo', [[NOW - 72 * 3_600_000, 0]])]
       // The usage poll's 5-hour gauges (none here: the header readings stand).
       if (expression.includes('quota.five_hour.')) return []
       // The Fable gauges (none here: no subscription reports a Fable allowance).
@@ -331,7 +336,7 @@ describe('createCloudWatchSource', () => {
     const { src, requests } = source(snapshotAnswers())
     const snapshot = await src.snapshot()
     const latest = t0 + 9 * 60_000
-    expect(requests).toHaveLength(19)
+    expect(requests).toHaveLength(20)
     const expressions = requests.map((r) => r.expression)
     expect(expressions).toContain(
       'SELECT MAX("claw_master.quota.used_fraction") FROM "ClawMaster" GROUP BY profile',
@@ -355,16 +360,22 @@ describe('createCloudWatchSource', () => {
     expect(expressions).toContain(
       'SELECT SUM("claw_master.anthropic.ratelimit.state") FROM "ClawMaster" WHERE measure = \'status\' AND "window" = \'all\' GROUP BY profile, "value"',
     )
+    expect(expressions).toContain(
+      'SELECT MAX("claw_master.quota.five_hour.limited") FROM "ClawMaster" GROUP BY profile',
+    )
     for (const { body, expression } of requests) {
       expect(body.EndTime).toBe(SEC(NOW + 60_000))
-      // The 5-hour reading is looked for over its whole window; the rest over minutes.
+      // The 5-hour reading is looked for over its whole window, whether a plan has a 5-hour limit
+      // over a week (hour by hour), the rest over minutes.
       expect(body.StartTime).toBe(
         SEC(
           NOW +
             60_000 -
             (expression.includes('anthropic.ratelimit")')
               ? FIVE_HOUR_LOOKBACK_MS
-              : SNAPSHOT_LOOKBACK_MS),
+              : expression.includes('five_hour.limited')
+                ? FIVE_HOUR_LIMIT_LOOKBACK_MS
+                : SNAPSHOT_LOOKBACK_MS),
         ),
       )
     }
@@ -396,6 +407,9 @@ describe('createCloudWatchSource', () => {
     expect(bravo.band).toBe('exhausted')
     expect(bravo.weekly.resetsAt).toBeNull()
     expect(bravo.fiveHour).toBeNull()
+    // The poll's word on 5-hour limits holds for days; none from alpha's proxy.
+    expect(bravo.fiveHourLimit).toBe(false)
+    expect(alpha.fiveHourLimit).toBeNull()
     expect(bravo.rateLimitedUntil).toBe(latest + 420_000)
     expect(bravo.latencyMs).toEqual({ p50: null, p95: null, p99: null })
     // The last minute Anthropic took its work (a refusal is not that); none for bravo.
