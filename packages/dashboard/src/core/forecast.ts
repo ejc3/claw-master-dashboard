@@ -672,6 +672,8 @@ export function poolGaps(
       // What a 5-hour window can still take: nothing while Anthropic refuses the subscription or
       // its week is full, and never more than its week leaves, since work in the window spends the
       // week too (as fiveHourLeft, for the bars).
+      // A plan with no 5-hour limit counts its week left here, as what it can take in the next five
+      // hours (so the pool's 5-hour figure is zero only in a gap); the 5-hour chart leaves it out.
       const five = isFull(s.weekly) || refused ? 0 : Math.min(1 - s.five.used, 1 - s.weekly.used)
       fiveHour += five
       fiveHourBy.push(five)

@@ -1,5 +1,5 @@
 import { GAPS_HORIZON_MS, type PoolGaps, poolGaps } from './forecast'
-import type { EpochMs, ProfileStatus } from './types'
+import { type EpochMs, FIVE_HOURS_MS, type ProfileStatus } from './types'
 
 const WEEK_MS = 7 * 24 * 3_600_000
 
@@ -33,14 +33,15 @@ export const PURCHASE_STEP_MS = 2 * 3_600_000
 /**
  * A subscription bought at `at`: its week starts then, unused, and resets a week later; until it is
  * bought it cannot take work (as if rate-limited until then). It brings no use of its own: the
- * pool's pace is the people's, not the subscriptions'.
+ * pool's pace is the people's, not the subscriptions'. It has a 5-hour limit, closed until its
+ * first work: a new account keeps one until Anthropic verifies it.
  */
 export function boughtAt(name: string, at: EpochMs): ProfileStatus {
   return {
     profile: name,
     band: 'ok',
     weekly: { usedFraction: 0, resetsAt: at + WEEK_MS, lengthMs: WEEK_MS },
-    fiveHour: null,
+    fiveHour: { usedFraction: 0, resetsAt: null, lengthMs: FIVE_HOURS_MS },
     rateLimitedUntil: at,
     tokenExpiresAt: null,
     latencyMs: { p50: null, p95: null, p99: null },

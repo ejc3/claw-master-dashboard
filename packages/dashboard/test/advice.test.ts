@@ -85,6 +85,22 @@ describe('capacityAdvice', () => {
     }
   })
 
+  it('buys subscriptions that have a 5-hour limit, as a new account does', () => {
+    // Two subscriptions with most of their weeks left whose 5-hour windows are what run out.
+    const limited = (name: string): ProfileStatus => ({
+      ...sub(name, 0.1, 100 * H),
+      fiveHour: { usedFraction: 0.6, resetsAt: NOW + 3 * H, lengthMs: 5 * H },
+    })
+    const profiles = [limited('a'), limited('b')]
+    const pace = { weekly: 0.004, fiveHour: 1 }
+    const advice = capacityAdvice(profiles, NOW, new Map(), NOW, pace)
+    if (advice.kind !== 'add') throw new Error(`advice ${advice.kind}`)
+    // One bought with no 5-hour limit would take all the work and cover the week alone; one with a
+    // 5-hour limit cannot, so more are needed.
+    expect(boughtAt('x', NOW).fiveHour).not.toBeNull()
+    expect(advice.count).toBeGreaterThan(1)
+  })
+
   it('drops what the pace does not need, cheapest loss first, keeping the target', () => {
     // Five fresh subscriptions at a pace that uses a tenth of one week a day.
     const names = ['a', 'b', 'c', 'd', 'e']
