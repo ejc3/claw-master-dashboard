@@ -291,6 +291,8 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
           tokenType === undefined ? TOKEN_TYPES.reduce((sum, t) => sum + of(t), 0) : of(tokenType)
         return byKey(total)
       }
+      case 'premiumTokens':
+        return byKey(0)
       case 'switches':
         return byKey(count(requests * 0.01, 'switches', m))
       case 'rateLimited':
@@ -460,6 +462,8 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
         query.tokenType,
         query.byType,
       )
+      // The demo serves no fast mode and no hour-long cache writes.
+      if (query.metric === 'premiumTokens') return []
       if (query.byType === true) {
         const { byType: _, ...each } = query
         const types = await Promise.all(

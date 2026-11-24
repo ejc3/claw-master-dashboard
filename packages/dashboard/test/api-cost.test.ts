@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { apiCost, apiPriceOf, formatDollars, HOUR_MS, type Series } from '../src/core/index'
+import { createCloudWatchSource } from '../src/cloudwatch/index'
+import {
+  apiCost,
+  apiPriceOf,
+  formatDollars,
+  HOUR_MS,
+  insightsQuery,
+  premiumExtra,
+  resolveMetric,
+  type Series,
+  seriesQueryFromParams,
+} from '../src/core/index'
 import { keptAnswer } from '../src/react/Breakdown'
 import { breakdownQueries, COST_STEP_SECONDS, SPLITS } from '../src/react/queries'
 
@@ -158,5 +169,99 @@ describe('the cost kept while its next answer loads', () => {
     // Another range's answer never shows under this one.
     const day = breakdownQueries(range, 300, people).cost?.people ?? null
     expect(keptAnswer(first.kept, loading, day, HOUR).show).toBeNull()
+  })
+})
+
+describe('tokens billed above the standard rate', () => {
+  it('cost their extra over the standard rate, by rate', () => {
+    const opus = apiPriceOf(OPUS)
+    const sonnet = apiPriceOf(SONNET)
+    if (opus === null || sonnet === null) throw new Error('no price')
+    expect(premiumExtra(opus, 'cache_creation', '1h')).toBe(3) // $8 against $5
+    expect(premiumExtra(opus, 'output', '1h')).toBe(0)
+    expect(premiumExtra(opus, 'output', 'fast')).toBe(20) // $40 against $20
+    expect(premiumExtra(opus, 'cache_creation', 'fast')).toBe(5) // $10 against $5
+    expect(premiumExtra(opus, 'cache_creation', 'fast_1h')).toBe(11) // $16 against $5
+    // No fast mode on Sonnet 5.5: a fast request's tokens cost the standard rate, its hour-long
+    // writes the hour-long rate.
+    expect(premiumExtra(sonnet, 'output', 'fast')).toBe(0)
+    expect(premiumExtra(sonnet, 'cache_creation', 'fast_1h')).toBe(1.5)
+    expect(premiumExtra(opus, 'input', 'something-new')).toBe(0)
+  })
+
+  it("add each model's extra and share it by the people's premium tokens of that type and rate", () => {
+    const cost = apiCost(
+      [
+        s('alice cache_creation', [[0, 1e6]]),
+        s('alice output', [[0, 1e6]]),
+        s('bob output', [[0, 1e6]]),
+      ],
+      [s(`${OPUS} cache_creation`, [[0, 1e6]]), s(`${OPUS} output`, [[0, 2e6]])],
+      [s(OPUS, [[0, 2]])],
+      {
+        // Alice's writes were kept an hour; bob's request was fast.
+        people: [s('alice cache_creation@1h', [[0, 1e6]]), s('bob output@fast', [[0, 1e6]])],
+        models: [s(`${OPUS} cache_creation@1h`, [[0, 1e6]]), s(`${OPUS} output@fast`, [[0, 1e6]])],
+      },
+    )
+    // Standard: alice $5 writes + $20 output, bob $20 output. Extra: alice $3, bob $20.
+    expect(cost?.people.get('alice')).toBeCloseTo(28)
+    expect(cost?.people.get('bob')).toBeCloseTo(40)
+    expect(cost?.models.get(OPUS)).toBeCloseTo(68)
+    expect(cost?.total).toBeCloseTo(68)
+  })
+
+  it('are asked for by person or model, type and rate, and keyed with the rate on the type', () => {
+    expect(
+      insightsQuery('ClawMaster', resolveMetric('premiumTokens', 'model', undefined, true)),
+    ).toBe(
+      'SELECT SUM("claw_master.inference.premium_tokens.by_model") FROM "ClawMaster" GROUP BY model, "type", "rate"',
+    )
+    expect(() => resolveMetric('premiumTokens', 'profile', undefined, true)).toThrow()
+    expect(() => resolveMetric('premiumTokens', 'client_account')).toThrow()
+    const params = new URLSearchParams({
+      metric: 'premiumTokens',
+      groupBy: 'model',
+      start: '0',
+      end: '600000',
+      step: '600',
+    })
+    expect(() => seriesQueryFromParams(params)).toThrow()
+    params.set('byType', '1')
+    expect(seriesQueryFromParams(params).byType).toBe(true)
+  })
+})
+
+describe('premium tokens from CloudWatch', () => {
+  it('key each series "<group> <type>@<rate>", folding people under their names', async () => {
+    const fetchImpl = (async () =>
+      Response.json({
+        MetricDataResults: ['uuid-1 cache_creation 1h', 'alice output fast'].map((label) => ({
+          Id: 'q',
+          Label: label,
+          Timestamps: [Math.floor(T0 / 1000)],
+          Values: [5],
+          StatusCode: 'Complete',
+        })),
+      })) as typeof fetch
+    const src = createCloudWatchSource({
+      accessKeyId: 'AKIAEXAMPLE',
+      secretAccessKey: 'example-secret',
+      region: 'us-test-1',
+      fetch: fetchImpl,
+      now: () => T0 + HOUR_MS,
+      accountAliases: new Map([['uuid-1', 'alice']]),
+    })
+    const series = await src.series({
+      metric: 'premiumTokens',
+      groupBy: 'client_account',
+      byType: true,
+      range: { start: T0, end: T0 + HOUR_MS },
+      stepSeconds: 600,
+    })
+    expect(series.map((x) => x.key).sort()).toEqual([
+      'alice cache_creation@1h',
+      'alice output@fast',
+    ])
   })
 })

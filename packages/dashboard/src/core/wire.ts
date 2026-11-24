@@ -30,6 +30,7 @@ const METRICS: readonly SemanticMetric[] = [
   'fableResetsInSeconds',
   'tokenExpiresInSeconds',
   'tokens',
+  'premiumTokens',
 ]
 
 export function seriesQueryToParams(query: SeriesQuery): URLSearchParams {
@@ -82,7 +83,9 @@ export function seriesQueryFromParams(params: URLSearchParams): SeriesQuery {
   const byType = params.get('byType')
   if (byType !== null) {
     if (byType !== '1') throw new BadQueryError('byType must be 1')
-    if (query.metric !== 'tokens') throw new BadQueryError('only tokens have a type')
+    if (query.metric !== 'tokens' && query.metric !== 'premiumTokens') {
+      throw new BadQueryError('only tokens have a type')
+    }
     if (query.groupBy === undefined || query.groupBy === 'type') {
       throw new BadQueryError('byType goes with a split other than by type')
     }
@@ -90,6 +93,9 @@ export function seriesQueryFromParams(params: URLSearchParams): SeriesQuery {
       throw new BadQueryError('split by type or filter on it, not both')
     }
     query.byType = true
+  }
+  if (query.metric === 'premiumTokens' && query.byType !== true) {
+    throw new BadQueryError('premium tokens are split by type')
   }
   validateSeriesQuery(query)
   return query

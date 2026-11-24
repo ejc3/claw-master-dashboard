@@ -181,6 +181,8 @@ export function Breakdown(props: {
   const costPeople = useSeries(props.apiBase, queries.cost?.people ?? null)
   const costModels = useSeries(props.apiBase, queries.cost?.models ?? null)
   const costRequests = useSeries(props.apiBase, queries.cost?.requests ?? null)
+  const costPremiumPeople = useSeries(props.apiBase, queries.cost?.premiumPeople ?? null)
+  const costPremiumModels = useSeries(props.apiBase, queries.cost?.premiumModels ?? null)
   const coverage = typesReady ? tokenCoverage(firstAt, props.range, props.stepSeconds) : null
   const showTokens =
     split.tokens &&
@@ -227,12 +229,27 @@ export function Breakdown(props: {
     queries.cost?.requests ?? null,
     props.stepSeconds * 1000,
   )
+  const premiumPeople = useKept(
+    costPremiumPeople,
+    queries.cost?.premiumPeople ?? null,
+    props.stepSeconds * 1000,
+  )
+  const premiumModels = useKept(
+    costPremiumModels,
+    queries.cost?.premiumModels ?? null,
+    props.stepSeconds * 1000,
+  )
+  // The premium counts add to the cost when they load; until then (or if they fail) the standard
+  // cost shows alone.
   const priced = useMemo(
     () =>
       peopleData === null || modelData === null || requestByModel === null
         ? null
-        : apiCost(peopleData, modelData, requestByModel),
-    [peopleData, modelData, requestByModel],
+        : apiCost(peopleData, modelData, requestByModel, {
+            people: premiumPeople ?? [],
+            models: premiumModels ?? [],
+          }),
+    [peopleData, modelData, requestByModel, premiumPeople, premiumModels],
   )
   const cost =
     priced === null || split.cost !== true

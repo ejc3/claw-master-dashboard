@@ -7,7 +7,7 @@ export {
   MAX_ADDED,
   PURCHASE_STEP_MS,
 } from './advice'
-export { API_PRICES, type ApiCost, apiCost, apiPriceOf } from './apiCost'
+export { API_PRICES, type ApiCost, apiCost, apiPriceOf, premiumExtra } from './apiCost'
 export { CALENDAR_TITLE_MAX, calendarIcs } from './calendar'
 export {
   groupableBy,
