@@ -129,14 +129,6 @@ const CATALOG: Record<SemanticMetric, Entry> = {
       model: 'claw_master.inference.tokens.by_model',
     },
   },
-  // What the tokens would cost at Claude API prices, in US dollars, priced by claw-master per
-  // response (releases that count it): by person, and by model.
-  apiCost: {
-    name: 'claw_master.inference.api_cost.by_client_account',
-    statistic: 'SUM',
-    dimensions: ['client_account'],
-    projections: { model: 'claw_master.inference.api_cost.by_model' },
-  },
 }
 
 const DIMENSIONS: readonly Dimension[] = [

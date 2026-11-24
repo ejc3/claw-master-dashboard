@@ -1,13 +1,15 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
+  apiCost,
   type EpochMs,
   formatCount,
   formatDollars,
   formatPercent,
   fromFirstBucket,
   type Series,
+  type SeriesQuery,
   type TimeRange,
   TOKEN_LABELS,
   TOKEN_TYPES,
@@ -18,10 +20,10 @@ import {
   tokenRows,
   tokensByType,
 } from '../core/index'
-import { useCountedSeries, useHeldHeight, useSeries, useWhen } from './hooks'
+import { type Loaded, useCountedSeries, useHeldHeight, useSeries, useWhen } from './hooks'
 import { type ChartSeries, foldSeries, LineChart, seriesColors } from './LineChart'
 import { shortNames } from './Pool'
-import { breakdownQueries, SPLITS } from './queries'
+import { breakdownQueries, queryShape, SPLITS } from './queries'
 import { Sparkline, sharedPeak } from './Sparkline'
 
 function ShareCell(props: { share: number }) {
@@ -51,31 +53,48 @@ export function tableRangeWords(
   return `since ${clock === null ? 'token counting began' : clock(firstAt)}`
 }
 
+/** A query's answer as last seen: its shape (queryShape), where its range ended, the series. */
+export interface KeptAnswer {
+  shape: string
+  end: EpochMs
+  data: Series[]
+}
+
 /**
- * Each key's API cost over the range, from the cost query's series, and what to say about it: the
- * total, and from when it was counted when that is later than the token counts start (the
- * release that prices them came later). Null when there is nothing priced to show. claw-master
- * prices only the models on its price list, so a model it does not name has no cost here.
+ * What to show for a query: its answer when ready, else the last one while the next loads, if it
+ * was for the same shape (not another range's or split's) and its range ended at most `maxMoveMs`
+ * before this one's. A failed query, or an answer older than that, shows nothing rather than an
+ * old figure beside a fresh table.
  */
-export function costSummary(
-  series: readonly Series[] | null,
-  costFirstAt: EpochMs | null,
-  tokensFirstAt: EpochMs | null,
-  range: TimeRange,
-  stepSeconds: number,
-): { byKey: Map<string, number>; total: number; from: EpochMs | null } | null {
-  if (series === null || costFirstAt === null) return null
-  const byKey = new Map<string, number>()
-  for (const s of series) {
-    const sum = s.points.reduce((acc, [, v]) => acc + v, 0)
-    if (sum > 0) byKey.set(s.key, (byKey.get(s.key) ?? 0) + sum)
+export function keptAnswer(
+  kept: KeptAnswer | null,
+  loaded: Loaded<Series[]>,
+  query: SeriesQuery | null,
+  maxMoveMs: number,
+): { show: Series[] | null; kept: KeptAnswer | null } {
+  if (query === null) return { show: null, kept }
+  const shape = queryShape(query)
+  if (loaded.state === 'ready') {
+    const fresh = { shape, end: loaded.range?.end ?? query.range.end, data: loaded.data }
+    return { show: loaded.data, kept: fresh }
   }
-  if (byKey.size === 0) return null
-  const total = [...byKey.values()].reduce((a, b) => a + b, 0)
-  const step = stepSeconds * 1000
-  const tokensFrom = Math.max(tokensFirstAt ?? range.start, range.start)
-  const from = costFirstAt >= Math.floor(tokensFrom / step) * step + step ? costFirstAt : null
-  return { byKey, total, from }
+  const usable =
+    loaded.state === 'loading' &&
+    kept !== null &&
+    kept.shape === shape &&
+    query.range.end - kept.end <= maxMoveMs
+  return { show: usable ? kept.data : null, kept }
+}
+
+function useKept(
+  loaded: Loaded<Series[]>,
+  query: SeriesQuery | null,
+  maxMoveMs: number,
+): Series[] | null {
+  const kept = useRef<KeptAnswer | null>(null)
+  const next = keptAnswer(kept.current, loaded, query, maxMoveMs)
+  kept.current = next.kept
+  return next.show
 }
 
 /** One row per key with any requests in the range, most first. */
@@ -159,7 +178,9 @@ export function Breakdown(props: {
   const typesReady = tokens.loaded.state === 'ready'
   const typeFailure = tokens.loaded.state === 'error' ? tokens.loaded : undefined
   const firstAt = tokens.firstAt
-  const costs = useCountedSeries(props.apiBase, queries.cost)
+  const costPeople = useSeries(props.apiBase, queries.cost?.people ?? null)
+  const costModels = useSeries(props.apiBase, queries.cost?.models ?? null)
+  const costRequests = useSeries(props.apiBase, queries.cost?.requests ?? null)
   const coverage = typesReady ? tokenCoverage(firstAt, props.range, props.stepSeconds) : null
   const showTokens =
     split.tokens &&
@@ -197,14 +218,30 @@ export function Breakdown(props: {
       : null
   const tokensPending = split.tokens && !typesReady && tokenError === null
   const rows = showTokens ? tokenTable : tokensPending || tokenError !== null ? [] : requestRows
-  const costData = costs.loaded.state === 'ready' ? costs.loaded.data : null
-  const cost = useMemo(
-    () =>
-      showTokens
-        ? costSummary(costData, costs.firstAt, firstAt, props.range, props.stepSeconds)
-        : null,
-    [showTokens, costData, costs.firstAt, firstAt, props.range, props.stepSeconds],
+  // Each kept while its next answer loads: at seven days the range moves an hour at a time, more
+  // than the cost queries' own step, so they reload each hour rather than keep their answer.
+  const peopleData = useKept(costPeople, queries.cost?.people ?? null, props.stepSeconds * 1000)
+  const modelData = useKept(costModels, queries.cost?.models ?? null, props.stepSeconds * 1000)
+  const requestByModel = useKept(
+    costRequests,
+    queries.cost?.requests ?? null,
+    props.stepSeconds * 1000,
   )
+  const priced = useMemo(
+    () =>
+      peopleData === null || modelData === null || requestByModel === null
+        ? null
+        : apiCost(peopleData, modelData, requestByModel),
+    [peopleData, modelData, requestByModel],
+  )
+  const cost =
+    priced === null || split.cost !== true
+      ? null
+      : {
+          byKey: split.dimension === 'model' ? priced.models : priced.people,
+          total: priced.total,
+          estimatedUntil: priced.estimatedUntil,
+        }
   const all = rows.reduce((sum, r) => sum + r.total, 0)
   // One scale for every row's trend (the tallest bar of any row), so a small series does not
   // look as busy as a large one and the busiest row's peak fills its height.
@@ -280,11 +317,11 @@ export function Breakdown(props: {
         {cost !== null && (
           <p className="cmd-note">
             {formatDollars(cost.total)} at Claude API prices
-            {cost.from === null
+            {cost.estimatedUntil === null
               ? ''
               : when === null
-                ? ', counted for part of this range'
-                : `, counted from ${when(cost.from, props.now)}`}
+                ? ', partly estimated from request counts'
+                : `, estimated from request counts before ${when(cost.estimatedUntil, props.now)}`}
             .
           </p>
         )}
@@ -345,9 +382,16 @@ export function Breakdown(props: {
                       )}
                     </>
                   ) : (
-                    <th scope="col" className="cmd-num">
-                      Requests
-                    </th>
+                    <>
+                      <th scope="col" className="cmd-num">
+                        Requests
+                      </th>
+                      {cost !== null && (
+                        <th scope="col" className="cmd-num cmd-full">
+                          API cost
+                        </th>
+                      )}
+                    </>
                   )}
                   <th scope="col">Share</th>
                   <th scope="col" className="cmd-full">
@@ -389,6 +433,11 @@ export function Breakdown(props: {
                           color={color(r.key)}
                         />
                         <td className="cmd-num">{formatCount(r.total)}</td>
+                        {cost !== null && (
+                          <td className="cmd-num cmd-full">
+                            {formatDollars(cost.byKey.get(r.key) ?? null)}
+                          </td>
+                        )}
                         <ShareCell share={all === 0 ? 0 : r.total / all} />
                         <td className="cmd-trend cmd-full">
                           <Sparkline points={r.points} maxBar={peak} />

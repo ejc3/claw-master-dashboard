@@ -35,9 +35,6 @@ const EMITTED: Record<string, readonly Dimension[]> = {
   'claw_master.inference.tokens.by_client': ['client', 'type'],
   // ejc3/CLIProxyAPI#37.
   'claw_master.inference.tokens.by_model': ['model', 'type'],
-  // ejc3/CLIProxyAPI#45: what the tokens would cost at API prices, by person and by model.
-  'claw_master.inference.api_cost.by_client_account': ['client_account'],
-  'claw_master.inference.api_cost.by_model': ['model'],
 }
 
 const METRICS: SemanticMetric[] = [
@@ -56,7 +53,6 @@ const METRICS: SemanticMetric[] = [
   'weeklyResetsInSeconds',
   'tokenExpiresInSeconds',
   'tokens',
-  'apiCost',
 ]
 const DIMENSIONS: Dimension[] = [
   'profile',
