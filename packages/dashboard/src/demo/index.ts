@@ -290,6 +290,18 @@ export function createDemoSource(options: DemoOptions = {}): MetricsSource {
           tokenType === undefined ? TOKEN_TYPES.reduce((sum, t) => sum + of(t), 0) : of(tokenType)
         return byKey(total)
       }
+      case 'apiCost': {
+        // Every made-up request priced at Opus 5.5's rates: about 4.6 cents.
+        const dollars =
+          (requests *
+            (TOKENS_PER_REQUEST.input * 4 +
+              TOKENS_PER_REQUEST.output * 20 +
+              TOKENS_PER_REQUEST.cache_read * 0.2 +
+              TOKENS_PER_REQUEST.cache_creation * 5)) /
+          1e6
+        const sum = shares.reduce((a, b) => a + b, 0)
+        return shares.map((s) => (dollars * s) / sum)
+      }
       case 'switches':
         return byKey(count(requests * 0.01, 'switches', m))
       case 'rateLimited':

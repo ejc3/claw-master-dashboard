@@ -44,6 +44,20 @@ export function formatCount(value: number | null): string {
   return new Intl.NumberFormat('en').format(Math.round(value))
 }
 
+/** US dollars as "$1,240", "$38.20" or "$0.42"; under a cent as "<$0.01". */
+export function formatDollars(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '—'
+  if (value === 0) return '$0'
+  if (Math.abs(value) < 0.005) return '<$0.01'
+  const digits = Math.round(Math.abs(value) * 100) / 100 >= 100 ? 0 : 2
+  return new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value)
+}
+
 /** Milliseconds as "840 ms" or "14.2 s". */
 export function formatDuration(ms: number | null): string {
   if (ms === null || !Number.isFinite(ms)) return '—'

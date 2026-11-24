@@ -40,6 +40,8 @@ export const SPLITS: ReadonlyArray<{
   tokens: boolean
   /** claude-master counts requests by this split too, the table's fallback; not by project. */
   requests: boolean
+  /** claw-master prices this split's tokens at Claude API rates (people and models). */
+  cost?: boolean
   /**
    * Tokens only once their counts cover the whole range; requests until then. For a split whose
    * token counts are new (models), where tokens from partway through would read as the whole story.
@@ -55,6 +57,7 @@ export const SPLITS: ReadonlyArray<{
     shortColumn: 'Person',
     tokens: true,
     requests: true,
+    cost: true,
   },
   {
     dimension: 'client',
@@ -96,6 +99,7 @@ export const SPLITS: ReadonlyArray<{
     tokens: true,
     requests: true,
     tokensOnceFull: true,
+    cost: true,
   },
 ]
 
@@ -151,11 +155,12 @@ export function breakdownQueries(
   range: TimeRange,
   stepSeconds: number,
   split: (typeof SPLITS)[number],
-): { requests: SeriesQuery | null; tokens: SeriesQuery | null } {
+): { requests: SeriesQuery | null; tokens: SeriesQuery | null; cost: SeriesQuery | null } {
   const base = { range, stepSeconds, groupBy: split.dimension }
   return {
     requests: split.requests ? { ...base, metric: 'requests' } : null,
     tokens: split.tokens ? { ...base, metric: 'tokens', byType: true } : null,
+    cost: split.cost === true ? { ...base, metric: 'apiCost' } : null,
   }
 }
 
@@ -263,6 +268,7 @@ export function firstQueries(now: EpochMs): SeriesQuery[] {
       : [
           ...(table.requests === null ? [] : [table.requests]),
           ...(table.tokens === null ? [] : [table.tokens]),
+          ...(table.cost === null ? [] : [table.cost]),
         ]),
   ])
 }
@@ -288,6 +294,7 @@ export function tabQueries(now: EpochMs, shown: RangeName): SeriesQuery[] {
           return [
             ...(table.requests === null ? [] : [table.requests]),
             ...(table.tokens === null ? [] : [table.tokens]),
+            ...(table.cost === null ? [] : [table.cost]),
           ]
         }),
       ]

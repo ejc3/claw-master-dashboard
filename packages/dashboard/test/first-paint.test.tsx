@@ -165,9 +165,17 @@ describe('the first paint', () => {
       'Cache read',
       'Cache write',
       'Tokens',
+      'API cost',
       'Share',
       'Trend',
     ])
+    // The people's cost at API prices: the total above the table, and a dollar cell per row.
+    expect(text).toMatch(/\$[\d,.]+ at Claude API prices\./)
+    const costs = [
+      ...container.querySelectorAll('section[aria-labelledby="cmd-breakdown-title"] tbody tr'),
+    ].map((row) => row.querySelectorAll('td')[5]?.textContent)
+    expect(costs.length).toBeGreaterThan(0)
+    for (const cost of costs) expect(cost).toMatch(/^\$[\d,.]+$/)
     // The weekly burn rate from the last day's readings, not each window's average.
     // The headline from the joint forecast, and how it is worked out.
     expect(text).toMatch(/Runs out in \S+|Out now|Won't run out/)
