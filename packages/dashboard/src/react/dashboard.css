@@ -358,7 +358,8 @@
     min-width: 0;
   }
 
-  .cmd-accounts ul {
+  /* The list itself (">"): a descendant rule would also lay out the detail's list two to a row. */
+  .cmd-accounts > ul {
     margin: 0;
     padding: 0;
     list-style: none;
@@ -567,7 +568,7 @@
       position: relative;
     }
 
-    .cmd-accounts ul {
+    .cmd-accounts > ul {
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
       gap: 2px 24px;
     }

@@ -119,6 +119,17 @@ describe('the subscription detail', () => {
     expect(body('.cmd-account-detail')).toMatch(/margin-top:\s*0/)
   })
 
+  it('lists its lines one under another, not two to a row like the subscriptions', () => {
+    // The detail's list sits inside .cmd-accounts: a descendant rule laid its lines out in two
+    // columns ("Weekly … resets" beside "Fable …", the reset time wrapped under).
+    const columns = rules(css).filter(
+      ([s, b]) =>
+        s.includes('.cmd-accounts') && /grid-template-columns/.test(b) && /\bul\b/.test(s),
+    )
+    expect(columns.length).toBeGreaterThan(0)
+    for (const [selector] of columns) expect(selector).toBe('.cmd-accounts > ul')
+  })
+
   it('is not cut off by the pool panel when the header is all there is', () => {
     // With every login expired there are no charts; overflow: hidden on the panel cut the detail off.
     const all = rules(css)
