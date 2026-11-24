@@ -393,9 +393,15 @@ describe("the page's token queries", () => {
     }
     // Each asked once: per range, requests, tokens, errors and weekly use by subscription, then
     // the table's splits (requests and tokens by person, machine and model, tokens by project; by
-    // subscription is the chart's own).
+    // subscription is the chart's own), and API cost by person and by model.
     expect(new Set(tabs.map(queryKey)).size).toBe(tabs.length)
-    expect(tabs).toHaveLength(22)
+    expect(tabs).toHaveLength(26)
+    expect(tabs.filter((q) => q.metric === 'apiCost').map((q) => q.groupBy)).toEqual([
+      'client_account',
+      'model',
+      'client_account',
+      'model',
+    ])
     expect(new Set(first.map(queryKey)).size).toBe(first.length)
   })
 })

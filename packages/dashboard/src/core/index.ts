@@ -53,6 +53,7 @@ export {
 export {
   formatCount,
   formatCountdown,
+  formatDollars,
   formatDuration,
   formatPercent,
   formatWhen,
