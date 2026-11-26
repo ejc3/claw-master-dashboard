@@ -640,11 +640,15 @@ export function poolGaps(
     weeklyDemand = 0
     fiveDemand = 0
   }
-  // A week that resets throws away what was left of it; each one after now is noted.
+  // A week that resets throws away what was left of it; each one after now is noted. A week Anthropic
+  // refuses until it resets threw nothing away, whatever the poll reads of it (seen 2026-11-26: 96%
+  // read, refused to the reset): nothing was left to use.
   const unusedAtReset: PoolGaps['unusedAtReset'] = []
   const resetWeek = (s: JointSlot, t: EpochMs) => {
     const resetsAt = s.weekly.resetsAt
-    if (resetsAt !== null && resetsAt <= t && resetsAt > now) {
+    const refusedToReset =
+      resetsAt !== null && s.limitedUntil !== null && s.limitedUntil >= resetsAt
+    if (resetsAt !== null && resetsAt <= t && resetsAt > now && !refusedToReset) {
       const unused = 1 - s.weekly.used
       if (unused > 0.005) {
         unusedAtReset.push({ profile: profiles[s.index]?.profile ?? '', at: resetsAt, unused })

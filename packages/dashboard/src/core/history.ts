@@ -27,21 +27,43 @@ export const DAY_MS = 24 * HOUR_MS
  * or as many as reach back into those hours, before (each subscription's rise in that hour, a
  * reset's fall counted as new use), and the 5-hour pace that makes through what a full 5-hour
  * window costs of the week. The hour `end` falls in is still being read, so it is left out. An
- * hour with no readings used nothing. Hours the pool was out used less than was asked of it.
+ * hour with no readings used nothing.
+ *
+ * The time the pool was out (`blocked`, measuredBlocked's spans) used what was left, not what was
+ * asked of it: nothing could be used, so its readings say nothing of demand. It is replayed at the
+ * pool's pace while it had tokens over the same period (the use of those hours over their length),
+ * so a week of starved hours is not replayed as a week nobody wanted tokens, which would leave
+ * fresh weeks unused and call them wasted. An hour out for part of it keeps what it used and adds
+ * that pace for the part it was out. With no time with tokens to measure, it stays as measured.
  */
 export function replayedPace(
   weeklyUsed: Series[],
   weekPerWindow: number | null,
   end: EpochMs,
   periodMs: number,
+  blocked: ReadonlyArray<{ start: EpochMs; end: EpochMs }> = [],
 ): (t: EpochMs) => PoolGaps['pace'] {
   const hour = (t: EpochMs) => Math.floor(t / HOUR_MS) * HOUR_MS
   const start = hour(end) - periodMs
   const byHour = new Map<EpochMs, number>()
+  const outOf = new Map<EpochMs, number>()
+  let used = 0
+  let open = 0
   for (let h = start; h < start + periodMs; h += HOUR_MS) {
     let rise = 0
     for (const s of weeklyUsed) rise += riseOver(s.points, h + HOUR_MS, HOUR_MS, 0)?.rise ?? 0
     byHour.set(h, rise)
+    let out = 0
+    for (const b of blocked) out += Math.max(0, Math.min(b.end, h + HOUR_MS) - Math.max(b.start, h))
+    const share = Math.min(1, out / HOUR_MS)
+    outOf.set(h, share)
+    used += rise
+    open += 1 - share
+  }
+  if (open > 0) {
+    const pace = used / open
+    for (const [h, share] of outOf)
+      if (share > 0) byHour.set(h, (byHour.get(h) ?? 0) + share * pace)
   }
   return (t) => {
     const offset = (((hour(t) - start) % periodMs) + periodMs) % periodMs

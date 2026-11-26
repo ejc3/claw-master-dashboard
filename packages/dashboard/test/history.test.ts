@@ -131,6 +131,36 @@ describe('replayedPace', () => {
     // The last whole hour ends at T's reading: none of the use after it.
     expect(paceAt(T + 23 * HOUR_MS).weekly).toBeCloseTo(0.01, 6)
   })
+
+  it('replays the time the pool was out at its pace while it had tokens, not as no demand', () => {
+    // The day before T: 2% an hour for 12 hours, then out (every week full: no rise) for 11.5
+    // hours, the last half hour with tokens again at 2% an hour.
+    const from = T - DAY_MS
+    const outFrom = from + 12 * HOUR_MS
+    const outTo = T - 30 * 60_000
+    const level = (t: EpochMs) =>
+      t <= outFrom
+        ? 0.2 + ((t - from) / HOUR_MS) * 0.02
+        : t <= outTo
+          ? 0.44
+          : 0.44 + ((t - outTo) / HOUR_MS) * 0.02
+    const series = every('a', from - HOUR_MS, T + STEP, level)
+    const blocked = [{ start: outFrom, end: outTo }]
+    const measured = replayedPace([series], 0.25, T, DAY_MS)
+    const filled = replayedPace([series], 0.25, T, DAY_MS, blocked)
+    // An hour it was out: measured, nobody wanted anything; filled, the 2% it used while it could.
+    const out = T + 15 * HOUR_MS
+    expect(measured(out).weekly).toBeCloseTo(0, 6)
+    expect(filled(out).weekly).toBeCloseTo(0.02, 6)
+    expect(filled(out).fiveHour).toBeCloseTo(0.02 / 0.25, 6)
+    // An hour with tokens is as measured.
+    expect(filled(T + 3 * HOUR_MS).weekly).toBeCloseTo(0.02, 6)
+    // The last hour, out for half of it: its 1% plus half an hour at 2% an hour.
+    expect(filled(T + 23 * HOUR_MS).weekly).toBeCloseTo(0.02, 6)
+    // Out all day: nothing to measure a pace by, so it stays as measured.
+    const allOut = replayedPace([series], 0.25, T, DAY_MS, [{ start: from - HOUR_MS, end: T }])
+    expect(allOut(out).weekly).toBeCloseTo(0, 6)
+  })
 })
 
 describe('poolGaps at a pace that changes', () => {
