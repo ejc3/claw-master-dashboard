@@ -99,9 +99,15 @@ export function ForecastHistory(props: {
       gaps?.pace ?? null,
     )
     if (ratio === null) return null
+    // The time the pool was out says nothing of demand: replayedPace fills it in.
+    const out = measuredBlocked(
+      { stepMs: READINGS_STEP_MS, weeklyUsed: weeklyUsed.series, fiveHourUsed: fiveUsed.series },
+      weeklyUsed.end - WEEK_MS - HOUR_MS,
+      weeklyUsed.end,
+    )
     return {
-      lastDay: replayedPace(weeklyUsed.series, ratio, weeklyUsed.end, DAY_MS),
-      lastWeek: replayedPace(weeklyUsed.series, ratio, weeklyUsed.end, WEEK_MS),
+      lastDay: replayedPace(weeklyUsed.series, ratio, weeklyUsed.end, DAY_MS, out),
+      lastWeek: replayedPace(weeklyUsed.series, ratio, weeklyUsed.end, WEEK_MS, out),
     }
   }, [weeklyUsed, fiveUsed, gaps])
   const replaying = forecastWith !== undefined && paces !== null && forecastingGaps(gaps)
