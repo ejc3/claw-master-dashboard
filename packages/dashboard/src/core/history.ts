@@ -34,7 +34,8 @@ export const DAY_MS = 24 * HOUR_MS
  * pool's pace while it had tokens over the same period (the use of those hours over their length),
  * so a week of starved hours is not replayed as a week nobody wanted tokens, which would leave
  * fresh weeks unused and call them wasted. An hour out for part of it keeps what it used and adds
- * that pace for the part it was out. With no time with tokens to measure, it stays as measured.
+ * that pace for the part it was out. With under MIN_OPEN_HOURS with tokens (and readings) to measure
+ * by, it stays as measured.
  */
 export function replayedPace(
   weeklyUsed: Series[],
@@ -57,10 +58,16 @@ export function replayedPace(
     for (const b of blocked) out += Math.max(0, Math.min(b.end, h + HOUR_MS) - Math.max(b.start, h))
     const share = Math.min(1, out / HOUR_MS)
     outOf.set(h, share)
-    used += rise
-    open += 1 - share
+    // An hour with no readings says nothing of the pace (an outage of the metrics, not idleness).
+    const read = weeklyUsed.some((s) => s.points.some(([at]) => at >= h && at < h + HOUR_MS))
+    if (read) {
+      used += rise
+      open += 1 - share
+    }
   }
-  if (open > 0) {
+  // Too little time with tokens to measure a pace by (the minutes after a reset are pent-up
+  // demand): it stays as measured.
+  if (open >= MIN_OPEN_HOURS) {
     const pace = used / open
     for (const [h, share] of outOf)
       if (share > 0) byHour.set(h, (byHour.get(h) ?? 0) + share * pace)
@@ -74,6 +81,9 @@ export function replayedPace(
     }
   }
 }
+
+/** The least time with tokens, in hours, the replay measures the pool's pace over to fill the rest. */
+const MIN_OPEN_HOURS = 3
 
 /** A weekly reset and the share of that subscription's week it threw away. */
 export interface ResetWaste {

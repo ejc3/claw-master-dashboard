@@ -157,6 +157,19 @@ describe('replayedPace', () => {
     expect(filled(T + 3 * HOUR_MS).weekly).toBeCloseTo(0.02, 6)
     // The last hour, out for half of it: its 1% plus half an hour at 2% an hour.
     expect(filled(T + 23 * HOUR_MS).weekly).toBeCloseTo(0.02, 6)
+    // With tokens only for the 20 minutes after a reset: too little to measure by, as measured.
+    const brief = replayedPace([series], 0.25, T, DAY_MS, [
+      { start: from - HOUR_MS, end: from + 20 * 60_000 },
+      { start: from + HOUR_MS, end: T },
+    ])
+    expect(brief(out).weekly).toBeCloseTo(0, 6)
+    // Hours with no readings count neither as time with tokens nor as use: the pace is the same.
+    const gappy = {
+      key: 'a',
+      points: series.points.filter(([t]) => t < from + 2 * HOUR_MS || t >= from + 6 * HOUR_MS),
+    }
+    const filledGappy = replayedPace([gappy], 0.25, T, DAY_MS, blocked)
+    expect(filledGappy(out).weekly).toBeGreaterThan(0.019)
     // Out all day: nothing to measure a pace by, so it stays as measured.
     const allOut = replayedPace([series], 0.25, T, DAY_MS, [{ start: from - HOUR_MS, end: T }])
     expect(allOut(out).weekly).toBeCloseTo(0, 6)

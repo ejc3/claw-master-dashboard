@@ -475,6 +475,21 @@ describe('allowance left on the table at weekly resets', () => {
     const brief = { ...refused, rateLimitedUntil: NOW + H }
     const h = poolGaps([brief, sub('b', [0.2, 100 * H], null)], NOW, rates({ a: 0, b: 0 }))
     expect(h.unusedAtReset.find((r) => r.profile === 'a')?.unused).toBeCloseTo(0.04, 2)
+    // Refused to seconds before the reset (the two times come from different readings): no waste.
+    const close = { ...refused, rateLimitedUntil: NOW + 10 * H - 5_000 }
+    const c = poolGaps([close, sub('b', [0.2, 100 * H], null)], NOW, rates({ a: 0, b: 0.01 }))
+    expect(c.unusedAtReset.filter((r) => r.profile === 'a')).toEqual([])
+  })
+
+  it('still notes the week a full 5-hour window was refused for, past the weekly reset', () => {
+    // 40% of the week used, resetting in an hour; the 5-hour window is full until 3 hours from now,
+    // and that is what Anthropic refuses it for: the week's 60% is lost at its reset.
+    const five = {
+      ...sub('a', [0.4, H], [1, 3 * H]),
+      rateLimitedUntil: NOW + 3 * H,
+    }
+    const g = poolGaps([five, sub('b', [0.2, 100 * H], null)], NOW, rates({ a: 0, b: 0.01 }))
+    expect(g.unusedAtReset.find((r) => r.profile === 'a')?.unused).toBeCloseTo(0.6, 2)
   })
 
   it('notes nothing for a week used up by its reset, or a reset already past', () => {
