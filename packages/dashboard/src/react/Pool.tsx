@@ -908,24 +908,15 @@ export function CapacityOutlook(props: {
   const fiveChart = chart('fiveHour', '5-hour limit left, next 5h', 160)
   // Only what the charts shown need.
   const note = [
-    weeklyView === 'stopped' ? 'With no more use, as limits reset' : 'At the current pace',
-    `100% is one subscription's whole limit${
-      shown.capacity > 1
-        ? `, so ${shown.capacity} subscriptions make ${asPercent(shown.capacity)}`
-        : ''
+    weeklyView === 'stopped' ? 'If use stops' : 'At current pace',
+    '100% = one subscription',
+    ...(fiveChart !== null && fiveHourCounted < shown.fiveHourBy.length
+      ? [`5-hour: only the ${fiveHourCounted} with a limit`]
+      : []),
+    `red: none free until a week resets${
+      shown.bands.some((b) => b.tone === 'secondary') ? ', amber: until a 5-hour resets' : ''
     }`,
-    ...(fiveChart === null
-      ? []
-      : [
-          ...(fiveHourCounted < shown.fiveHourBy.length
-            ? [`5-hour chart: only the ${fiveHourCounted} with a 5-hour limit`]
-            : []),
-          'a 5-hour window can use no more than its week has left',
-        ]),
-    `shaded: none can take work, red until a week resets (or Anthropic's refusal ends)${
-      shown.bands.some((b) => b.tone === 'secondary') ? ', amber until a 5-hour window resets' : ''
-    }`,
-    ...(anyReserve ? ['hatched: the part of a week its reserve holds back from the pool'] : []),
+    ...(anyReserve ? ['hatched: reserve'] : []),
   ].join(' · ')
   return (
     <div className="cmd-capacity">

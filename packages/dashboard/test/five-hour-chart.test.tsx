@@ -78,7 +78,7 @@ describe('the 5-hour chart', () => {
     // Only a is drawn on it (one series: no legend).
     expect(legend(figures[1] as Element)).toEqual([])
     expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain(
-      'make 300% · 5-hour chart: only the 1 with a 5-hour limit · a 5-hour window',
+      '100% = one subscription · 5-hour: only the 1 with a limit · red',
     )
   })
 
@@ -99,7 +99,7 @@ describe('the 5-hour chart', () => {
       '5-hour limit left, next 5h · 100% of one subscription',
     )
     expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain(
-      'make 300% · 5-hour chart: only the 2 with a 5-hour limit ·',
+      '100% = one subscription · 5-hour: only the 2 with a limit ·',
     )
   })
 
@@ -110,9 +110,7 @@ describe('the 5-hour chart', () => {
         (f) => f.querySelector('figcaption')?.textContent,
       ),
     ).toEqual(['Weekly limit left · 100% of one subscription'])
-    expect(container.querySelector('.cmd-capacity-note')?.textContent).not.toContain(
-      '5-hour chart:',
-    )
+    expect(container.querySelector('.cmd-capacity-note')?.textContent).not.toContain('5-hour:')
   })
 
   it('is left out, with what the note says of it, when none it counts has room', () => {
@@ -128,9 +126,9 @@ describe('the 5-hour chart', () => {
       ),
     ).toEqual(['Weekly limit left · 50% of one subscription'])
     const note = container.querySelector('.cmd-capacity-note')?.textContent ?? ''
-    expect(note).not.toMatch(/5-hour chart|a 5-hour window can use/)
+    expect(note).not.toMatch(/5-hour/)
     expect(note).toBe(
-      "At the current pace · 100% is one subscription's whole limit, so 2 subscriptions make 200% · shaded: none can take work, red until a week resets (or Anthropic's refusal ends)",
+      'At current pace · 100% = one subscription · red: none free until a week resets',
     )
   })
 
@@ -140,9 +138,7 @@ describe('the 5-hour chart', () => {
     expect(figures[1]?.querySelector('figcaption')?.textContent).toBe(
       '5-hour limit left, next 5h · 100% of one subscription',
     )
-    expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain(
-      'make 200% · a 5-hour window',
-    )
+    expect(container.querySelector('.cmd-capacity-note')?.textContent).not.toContain('5-hour:')
   })
 })
 
