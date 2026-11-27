@@ -598,7 +598,7 @@ export function PoolAccounts(props: {
                     {...(fable === undefined ? {} : { fable })}
                   />
                   {/* No 5-hour limit, no ring: an empty space keeps the bars lined up. */}
-                  {/* Out for now: in the ring's place, when it is back. */}
+                  {/* Out for now: in the ring's place, an empty donut with when it is back. */}
                   {fiveOut && back !== null ? (
                     <span
                       className="cmd-ring-back"
@@ -606,7 +606,16 @@ export function PoolAccounts(props: {
                       data-level={levelOf(five)}
                       data-left={pct(five === null ? 0 : Math.max(0, 1 - five))}
                     >
-                      {backIn(back - props.now)}
+                      {/* An empty donut, the time it is back inside. */}
+                      <svg className="cmd-ring-back-donut" viewBox="0 0 20 20" aria-hidden="true">
+                        <circle
+                          className="cmd-ring-track cmd-ring-back-track"
+                          cx="10"
+                          cy="10"
+                          r="9"
+                        />
+                      </svg>
+                      <span className="cmd-ring-back-time">{backIn(back - props.now)}</span>
                     </span>
                   ) : !available || (five === null && noFiveHourLimit(p)) ? (
                     // Out for the week (or until its login or a reading is back), or no 5-hour

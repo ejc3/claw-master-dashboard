@@ -199,10 +199,12 @@ describe('the 5-hour mark of each kind of subscription', () => {
       ['.cmd-ring', '.cmd-ring-none', '.cmd-ring-back']
         .filter((m) => cell(name).querySelector(m) !== null)
         .map((m) =>
-          m === '.cmd-ring-back' ? `${m} ${cell(name).querySelector(m)?.textContent}` : m,
+          m === '.cmd-ring-back'
+            ? `${m} ${cell(name).querySelector('.cmd-ring-back-time')?.textContent} donut ${cell(name).querySelector('.cmd-ring-back-donut .cmd-ring-track') !== null}`
+            : m,
         )
     expect(mark('week')).toEqual(['.cmd-ring-none'])
-    expect(mark('now')).toEqual(['.cmd-ring-back 2h'])
+    expect(mark('now')).toEqual(['.cmd-ring-back 2h donut true'])
     expect(mark('open')).toEqual(['.cmd-ring'])
   })
 })
