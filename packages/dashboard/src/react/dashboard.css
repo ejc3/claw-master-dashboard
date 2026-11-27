@@ -530,16 +530,16 @@
     height: 20px;
   }
 
-  /* Out for now: an empty donut in the ring's place and size, with when it is back inside. */
+  /* Out for now: the 5-hour ring, empty (its faint track only), in its place and size, with when it is back on top. */
   .cmd-ring-back {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--cmd-ink-2);
-    font-size: 0.5rem;
-    font-weight: 700;
-    letter-spacing: -0.04em;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
@@ -567,11 +567,6 @@
 
   .cmd-ring-left {
     stroke: var(--cmd-account-fill, var(--cmd-fill));
-  }
-
-  /* The empty donut's thin track leaves room inside for the time. */
-  .cmd-ring-back-track {
-    stroke-width: 1.25;
   }
 
   .cmd-ring[data-level="unknown"] .cmd-ring-track {
