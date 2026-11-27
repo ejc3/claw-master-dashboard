@@ -1483,9 +1483,7 @@ describe('the banner', () => {
     // With no more use, every week is whole again by its reset: 200% for two subscriptions.
     expect(slider.getAttribute('aria-valuetext')).toMatch(/total 200%$/)
     // The toggle covers the 5-hour chart and says what it shows.
-    expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain(
-      'With no more use, as limits reset',
-    )
+    expect(container.querySelector('.cmd-capacity-note')?.textContent).toContain('If use stops')
     const five = [...container.querySelectorAll('.cmd-capacity [role="slider"]')].at(
       -1,
     ) as HTMLElement
